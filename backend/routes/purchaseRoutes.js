@@ -13,7 +13,8 @@ const {
   getTransactionHistory,
   getTransactionByHash,
   updateTransactionStatus,
-  getTransactionStats
+  getTransactionStats,
+  getAllPurchases
 } = require('../controllers/purchaseController');
 
 // Get all purchases with filtering and pagination
@@ -52,5 +53,8 @@ router.put('/transactions/:txHash/status', updateTransactionStatus);
 
 // Get transaction statistics
 router.get('/transactions/stats', getTransactionStats);
+
+// Get all purchases for analytics
+router.get('/all', getAllPurchases);
 
 module.exports = router; 

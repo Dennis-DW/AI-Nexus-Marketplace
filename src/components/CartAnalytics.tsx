@@ -223,7 +223,7 @@ export default function CartAnalytics() {
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-red-600">{analytics.priceDistribution.high}</div>
-                  <div className="text-sm text-gray-600">High (>0.1 ETH)</div>
+                  <div className="text-sm text-gray-600">High (&gt;0.1 ETH)</div>
                 </div>
               </div>
             </div>

@@ -19,6 +19,8 @@ import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
 import Security from './pages/Security';
 import Cookies from './pages/Cookies';
+import Documentation from './pages/Documentation';
+import Dashboard from './pages/Dashboard';
 
 function App() {
   return (
@@ -41,6 +43,8 @@ function App() {
             <Route path="/terms" element={<Terms />} />
             <Route path="/security" element={<Security />} />
             <Route path="/cookies" element={<Cookies />} />
+            <Route path="/docs" element={<Documentation />} />
+            <Route path="/dashboard" element={<Dashboard />} />
           </Routes>
           <Footer />
           <Toaster 

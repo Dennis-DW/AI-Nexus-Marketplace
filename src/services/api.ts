@@ -319,6 +319,17 @@ export const userAPI = {
   }) => {
     const response = await api.get(`/api/users/${walletAddress}/purchases`, { params });
     return response.data;
+  },
+
+  // Get user's sales history
+  getUserSalesHistory: async (walletAddress: string, params?: {
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+  }) => {
+    const response = await api.get(`/api/users/sales/${walletAddress}`, { params });
+    return response.data;
   }
 };
 
@@ -425,6 +436,19 @@ export const purchaseAPI = {
   // Get purchase statistics
   getPurchaseStats: async () => {
     const response = await api.get('/api/purchase/stats');
+    return response.data;
+  },
+
+  // Get all purchases for analytics
+  getAllPurchases: async (params?: {
+    page?: number;
+    limit?: number;
+    transactionType?: string;
+    status?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+  }) => {
+    const response = await api.get('/api/purchase/all', { params });
     return response.data;
   }
 };

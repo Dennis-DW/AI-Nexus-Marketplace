@@ -776,6 +776,58 @@ const getUserPurchaseHistory = async (req, res) => {
   }
 };
 
+// Get all purchases for analytics
+const getAllPurchases = async (req, res) => {
+  try {
+    const { page = 1, limit = 1000, transactionType, status, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const matchStage = {};
+    
+    if (transactionType) {
+      matchStage.transactionType = transactionType;
+    }
+    
+    if (status) {
+      matchStage.status = status;
+    }
+    
+    const sortStage = {};
+    sortStage[sortBy] = sortOrder === 'asc' ? 1 : -1;
+    
+    const purchases = await Purchase.find(matchStage)
+      .populate('modelId', 'name category')
+      .sort(sortStage)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+    
+    const total = await Purchase.countDocuments(matchStage);
+    
+    res.json({
+      success: true,
+      data: {
+        docs: purchases,
+        totalDocs: total,
+        limit: parseInt(limit),
+        page: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        hasNextPage: page * limit < total,
+        hasPrevPage: page > 1
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error getting all purchases:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get all purchases',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getPurchases,
   getPurchaseById,
@@ -789,5 +841,6 @@ module.exports = {
   getTransactionHistory,
   getTransactionByHash,
   updateTransactionStatus,
-  getTransactionStats
+  getTransactionStats,
+  getAllPurchases
 }; 

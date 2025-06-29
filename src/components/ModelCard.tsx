@@ -94,6 +94,13 @@ export default function ModelCard({ model, isContractModel = false, displayMode 
       return;
     }
 
+    // Check if user is trying to buy their own model
+    const sellerAddress = model.seller || model.sellerAddress || '';
+    if (address && address.toLowerCase() === sellerAddress.toLowerCase()) {
+      toast.error('You cannot buy your own model');
+      return;
+    }
+
     // Check if user has sufficient token balance
     if (parseFloat(tokenBalance) < priceInTokens) {
       toast.error(`Insufficient token balance. You need ${priceInTokens.toFixed(2)} ANX tokens.`);
@@ -129,12 +136,15 @@ export default function ModelCard({ model, isContractModel = false, displayMode 
           walletAddress: address,
           sellerAddress: model.sellerAddress,
           txHash: `0x${Date.now().toString(16)}${Math.random().toString(16).substring(2, 10)}`,
+          priceInETH: model.price.replace(' ETH', ''),
           priceInTokens: priceInTokens.toString(),
+          priceInUSD: parseFloat(model.price.replace(' ETH', '')) * 2000,
           network: 'localhost',
           transactionType: 'contract_model_purchase',
           tokenContractAddress: import.meta.env.VITE_TOKEN_CONTRACT_ADDRESS,
           tokenSymbol: 'ANX',
-          tokenDecimals: 18
+          tokenDecimals: 18,
+          status: 'confirmed'
         });
       } else {
         // Purchase database model with tokens
@@ -151,12 +161,15 @@ export default function ModelCard({ model, isContractModel = false, displayMode 
           walletAddress: address,
           sellerAddress: model.sellerAddress,
           txHash: `0x${Date.now().toString(16)}${Math.random().toString(16).substring(2, 10)}`,
+          priceInETH: model.price.replace(' ETH', ''),
           priceInTokens: priceInTokens.toString(),
+          priceInUSD: parseFloat(model.price.replace(' ETH', '')) * 2000,
           network: 'localhost',
           transactionType: 'database_model_purchase',
           tokenContractAddress: import.meta.env.VITE_TOKEN_CONTRACT_ADDRESS,
           tokenSymbol: 'ANX',
-          tokenDecimals: 18
+          tokenDecimals: 18,
+          status: 'confirmed'
         });
       }
 
@@ -180,6 +193,10 @@ export default function ModelCard({ model, isContractModel = false, displayMode 
   const displayAuthor = model.author || model.seller || model.sellerAddress || 'Anonymous';
   const displayTags = model.tags || [];
   const itemId = model._id || model.id?.toString() || '';
+  
+  // Check if current user is the seller
+  const sellerAddress = model.seller || model.sellerAddress || '';
+  const isOwnModel = address && address.toLowerCase() === sellerAddress.toLowerCase();
 
   if (displayMode === 'list') {
     return (
@@ -260,10 +277,15 @@ export default function ModelCard({ model, isContractModel = false, displayMode 
                   </button>
                   <button
                     onClick={handleTokenPurchase}
-                    disabled={isLoading}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    disabled={isLoading || isOwnModel}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      isOwnModel 
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed'
+                    }`}
+                    title={isOwnModel ? 'You cannot buy your own model' : 'Buy with tokens'}
                   >
-                    {isLoading ? 'Buying...' : 'Buy Now'}
+                    {isLoading ? 'Buying...' : isOwnModel ? 'Your Model' : 'Buy Now'}
                   </button>
                 </div>
               </div>
@@ -351,10 +373,15 @@ export default function ModelCard({ model, isContractModel = false, displayMode 
           </button>
           <button
             onClick={handleTokenPurchase}
-            disabled={isLoading}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            disabled={isLoading || isOwnModel}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              isOwnModel 
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed'
+            }`}
+            title={isOwnModel ? 'You cannot buy your own model' : 'Buy with tokens'}
           >
-            {isLoading ? 'Buying...' : 'Buy Now'}
+            {isLoading ? 'Buying...' : isOwnModel ? 'Your Model' : 'Buy Now'}
           </button>
         </div>
       </div>

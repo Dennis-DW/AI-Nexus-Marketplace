@@ -6,20 +6,16 @@ export default function Footer() {
     Product: [
       { name: 'Marketplace', href: '/marketplace' },
       { name: 'Pricing', href: '/pricing' },
-      { name: 'Documentation', href: '/docs' },
-      { name: 'API', href: '/docs' }
+      { name: 'Documentation', href: '/docs' }
     ],
     Company: [
       { name: 'About', href: '/about' },
       { name: 'Blog', href: '/blog' },
-      { name: 'Careers', href: '/about' },
       { name: 'Contact', href: '/contact' }
     ],
     Resources: [
-      { name: 'Help Center', href: '/help' },
-      { name: 'Community', href: '/community' },
-      { name: 'Tutorials', href: '/tutorials' },
-      { name: 'Status', href: '/status' }
+      { name: 'Documentation', href: '/docs' },
+      { name: 'API Reference', href: '/docs' }
     ],
     Legal: [
       { name: 'Privacy', href: '/privacy' },

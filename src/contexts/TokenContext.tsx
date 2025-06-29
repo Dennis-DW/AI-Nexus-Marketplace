@@ -49,10 +49,17 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
       const balance = await contract.balanceOf(address);
       setTokenBalance(formatUnits(balance, 18));
     } catch (e: any) {
-      console.error('Error refreshing balance:', e);
+      // Only log errors that are not related to contract deployment
+      if (!e.message.includes('could not decode result data') && 
+          !e.message.includes('BAD_DATA') &&
+          e.message !== 'Please connect your wallet first') {
+        console.error('Error refreshing balance:', e);
+      }
       setTokenBalance('0');
-      // Only show notification for non-connection errors
-      if (e.message !== 'Please connect your wallet first') {
+      // Don't show notification for contract not deployed errors
+      if (e.message !== 'Please connect your wallet first' && 
+          !e.message.includes('could not decode result data') &&
+          !e.message.includes('BAD_DATA')) {
         showNotification({
           type: 'error',
           title: 'Balance Update Failed',
@@ -73,8 +80,10 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
     } catch (e: any) {
       console.error('Error checking approval:', e);
       setIsApproved(false);
-      // Only show notification for non-connection errors
-      if (e.message !== 'Please connect your wallet first') {
+      // Don't show notification for contract not deployed errors
+      if (e.message !== 'Please connect your wallet first' && 
+          !e.message.includes('could not decode result data') &&
+          !e.message.includes('BAD_DATA')) {
         showNotification({
           type: 'error',
           title: 'Approval Check Failed',

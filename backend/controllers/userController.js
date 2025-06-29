@@ -134,14 +134,37 @@ const getUserDashboard = async (req, res) => {
         .limit(20)
     ]);
 
-    // Calculate earnings
+    // Calculate earnings - both ETH and tokens
     const earnings = await Purchase.aggregate([
       { $match: { sellerAddress: walletAddress.toLowerCase() } },
       {
         $group: {
           _id: null,
           totalEarnings: { $sum: { $toDouble: '$priceInETH' } },
-          totalEarningsUSD: { $sum: '$priceInUSD' }
+          totalEarningsUSD: { $sum: '$priceInUSD' },
+          totalTokenEarnings: { $sum: { $toDouble: '$priceInTokens' } },
+          ethSales: {
+            $sum: {
+              $cond: [
+                { $or: [
+                  { $eq: ['$transactionType', 'eth_purchase'] },
+                  { $eq: ['$transactionType', 'database_model_purchase'] },
+                  { $eq: ['$transactionType', 'contract_model_purchase'] }
+                ]},
+                { $toDouble: '$priceInETH' },
+                0
+              ]
+            }
+          },
+          tokenSales: {
+            $sum: {
+              $cond: [
+                { $eq: ['$transactionType', 'token_purchase'] },
+                { $toDouble: '$priceInTokens' },
+                0
+              ]
+            }
+          }
         }
       }
     ]);
@@ -152,7 +175,10 @@ const getUserDashboard = async (req, res) => {
         totalPurchases: purchases.length,
         totalListings: listedModels.length,
         totalEarnings: earnings.length > 0 ? earnings[0].totalEarnings : 0,
-        totalEarningsUSD: earnings.length > 0 ? earnings[0].totalEarningsUSD : 0
+        totalEarningsUSD: earnings.length > 0 ? earnings[0].totalEarningsUSD : 0,
+        totalTokenEarnings: earnings.length > 0 ? earnings[0].totalTokenEarnings : 0,
+        ethSales: earnings.length > 0 ? earnings[0].ethSales : 0,
+        tokenSales: earnings.length > 0 ? earnings[0].tokenSales : 0
       },
       recentPurchases: purchases,
       listedModels,
@@ -276,10 +302,64 @@ const getUserActivity = async (req, res) => {
   }
 };
 
+// Get user sales history
+const getUserSalesHistory = async (req, res) => {
+  try {
+    const { walletAddress } = req.params;
+    const { page = 1, limit = 20 } = req.query;
+
+    if (!walletAddress || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid wallet address'
+      });
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get sales where user is the seller
+    const sales = await Purchase.find({ 
+      sellerAddress: walletAddress.toLowerCase() 
+    })
+      .populate('modelId', 'name type description image')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    // Calculate total sales count
+    const totalSales = await Purchase.countDocuments({ 
+      sellerAddress: walletAddress.toLowerCase() 
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        sales,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalSales / parseInt(limit)),
+          totalSales,
+          hasNextPage: parseInt(page) < Math.ceil(totalSales / parseInt(limit)),
+          hasPrevPage: parseInt(page) > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching user sales history:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch user sales history',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getUserProfile,
   updateUserProfile,
   getUserDashboard,
   getAllUsers,
-  getUserActivity
+  getUserActivity,
+  getUserSalesHistory
 };
