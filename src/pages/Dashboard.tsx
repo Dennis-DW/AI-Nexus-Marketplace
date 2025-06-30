@@ -1,419 +1,320 @@
 import { motion } from 'framer-motion';
-import { TrendingUp, Users, Zap, DollarSign, Activity, Calendar, Star, Download, Package, BarChart3, ArrowLeft } from 'lucide-react';
+import { TrendingUp, Users, ShoppingCart, DollarSign, Activity, Zap, Clock, Star, Calendar, Download, Package, BarChart3 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
-import { useMarketStats, useChartData } from '../hooks/useMarketData';
+import { useAccount } from 'wagmi';
 import { useQuery } from '@tanstack/react-query';
-import { modelAPI, purchaseAPI } from '../services/api';
+import { userAPI, modelAPI, purchaseAPI } from '../services/api';
+import { useBlockchainData } from '../hooks/useBlockchainData';
+import { useMarketStats, useChartData } from '../hooks/useMarketData';
+import { useRevenue } from '../hooks/useRevenue';
+import { formatEther } from 'viem';
 import { format } from 'date-fns';
-import { Link } from 'react-router-dom';
 
 export default function Dashboard() {
-  const { data: stats, isLoading: statsLoading } = useMarketStats();
-  const { data: chartData, isLoading: chartLoading } = useChartData(30);
+  const { address, isConnected } = useAccount();
 
-  // Fetch all purchases to calculate total ETH spent on tokens
-  const { data: allPurchases } = useQuery({
-    queryKey: ['allPurchases'],
-    queryFn: async () => {
-      const response = await purchaseAPI.getAllPurchases();
-      return response.data?.docs || [];
-    },
-    refetchInterval: 30000, // Refetch every 30 seconds
+  // Fetch blockchain data
+  const { stats: blockchainStats, loading: blockchainLoading, tokenBalance } = useBlockchainData();
+
+  // Fetch user profile
+  const { data: userProfile, isLoading: profileLoading } = useQuery({
+    queryKey: ['userProfile', address],
+    queryFn: () => address ? userAPI.getUserProfile(address) : null,
+    enabled: !!address,
   });
 
-  // Calculate total ETH spent on tokens from all purchases
-  const totalETHSpentOnTokens = allPurchases ? allPurchases.reduce((total: number, purchase: any) => {
-    // Check if this is a token purchase
-    const isTokenPurchase = purchase.transactionType === 'token_purchase' || 
-                           purchase.transactionType === 'contract_model_purchase' ||
-                           purchase.transactionType === 'database_model_purchase' ||
-                           (purchase.priceInTokens && parseFloat(purchase.priceInTokens) > 0);
-    
-    if (isTokenPurchase) {
-      let ethAmount = parseFloat(purchase.priceInETH || '0');
-      
-      // If priceInETH is 0 but we have priceInTokens, calculate ETH equivalent
-      if (ethAmount === 0 && purchase.priceInTokens) {
-        const tokenAmount = parseFloat(purchase.priceInTokens);
-        ethAmount = tokenAmount / 1000; // Convert tokens to ETH
-      }
-      
-      return total + ethAmount;
-    }
-    return total;
-  }, 0) : 0;
-
-  // Calculate total revenue from all transactions
-  const totalRevenue = allPurchases ? allPurchases.reduce((total: number, purchase: any) => {
-    return total + parseFloat(purchase.priceInETH || '0');
-  }, 0) : 0;
-
-  // Fetch additional model analytics
-  const { data: modelAnalytics } = useQuery({
-    queryKey: ['modelAnalytics'],
-    queryFn: async () => {
-      const [modelsResponse, purchasesResponse] = await Promise.all([
-        modelAPI.getModels({ limit: 1000 }),
-        purchaseAPI.getAllPurchases({ limit: 1000 })
-      ]);
-      
-      const models = modelsResponse.data || [];
-      const purchases = purchasesResponse.data?.docs || [];
-      
-      // Calculate model performance metrics
-      const modelPerformance = models.map(model => {
-        const modelPurchases = purchases.filter(p => p.modelId === model._id);
-        const totalRevenue = modelPurchases.reduce((sum, p) => sum + parseFloat(p.priceInETH || '0'), 0);
-        const totalDownloads = model.downloads || 0;
-        const avgRating = model.rating || 0;
-        
-        return {
-          name: model.name,
-          revenue: totalRevenue,
-          downloads: totalDownloads,
-          rating: avgRating,
-          category: model.category || 'AI Model'
-        };
-      }).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
-
-      // Calculate category distribution
-      const categoryData = models.reduce((acc, model) => {
-        const category = model.category || 'AI Model';
-        acc[category] = (acc[category] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
-
-      const pieData = Object.entries(categoryData).map(([name, value]) => ({
-        name,
-        value
-      }));
-
-      return {
-        topModels: modelPerformance,
-        categoryDistribution: pieData,
-        totalModels: models.length,
-        totalRevenue: purchases.reduce((sum, p) => sum + parseFloat(p.priceInETH || '0'), 0)
-      };
-    },
-    refetchInterval: 60000, // Refetch every minute
+  // Fetch user dashboard data
+  const { data: dashboardData, isLoading: dashboardLoading } = useQuery({
+    queryKey: ['userDashboard', address],
+    queryFn: () => address ? userAPI.getUserDashboard(address) : null,
+    enabled: !!address,
   });
 
-  const statCards = [
+  // Fetch user's listed models
+  const { data: listedModelsData, isLoading: modelsLoading } = useQuery({
+    queryKey: ['userModels', address],
+    queryFn: () => address ? modelAPI.getModels({ sellerAddress: address }) : null,
+    enabled: !!address,
+  });
+
+  if (!isConnected) {
+    return (
+      <div className="pt-20 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Activity className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Connect Your Wallet</h2>
+          <p className="text-gray-600">Please connect your wallet to view your dashboard</p>
+        </div>
+      </div>
+    );
+  }
+
+  const user = userProfile?.data;
+  const dashboard = dashboardData?.data;
+  const listedModels = Array.isArray(listedModelsData?.data) ? listedModelsData.data : [];
+
+  // Use blockchain data for purchases and stats
+  const purchases = blockchainStats?.purchaseHistory || [];
+  const sales = blockchainStats?.salesHistory || [];
+
+  // Get recent activity from blockchain data
+  const recentActivity = [
+    ...purchases.map((purchase: any) => ({
+      type: 'purchase',
+      title: `Purchased ${purchase.modelId || `Model ${purchase.contractModelId}`}`,
+      amount: `${parseFloat(formatEther(BigInt(purchase.price || '0'))).toFixed(4)} ETH`,
+      timestamp: purchase.timestamp * 1000,
+      txHash: purchase.txHash,
+      icon: ShoppingCart,
+      color: 'text-green-600',
+    })),
+    ...sales.map((sale: any) => ({
+      type: 'sale',
+      title: `Sold ${sale.modelId || `Model ${sale.contractModelId}`}`,
+      amount: `${parseFloat(formatEther(BigInt(sale.sellerAmount || '0'))).toFixed(4)} ETH`,
+      timestamp: sale.timestamp * 1000,
+      txHash: sale.txHash,
+      icon: DollarSign,
+      color: 'text-blue-600',
+    })),
+  ].sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
+
+  const stats = [
     {
       icon: TrendingUp,
-      title: 'Total AI Models Listed',
-      value: stats?.totalModels || 0,
-      change: '+12%',
-      color: 'text-blue-600',
-      description: 'Available models in marketplace'
-    },
-    {
-      icon: Users,
-      title: 'Active Users',
-      value: (stats?.uniqueBuyers || 0) + (stats?.uniqueSellers || 0),
-      change: '+8%',
-      color: 'text-green-600',
-      description: 'Buyers & sellers combined'
-    },
-    {
-      icon: Zap,
-      title: 'Total ETH Spent on ANX Tokens',
-      value: `${totalETHSpentOnTokens.toFixed(4)} ETH`,
-      change: '+24%',
+      label: 'Total Token Balance',
+      value: `${parseFloat(tokenBalance || '0').toFixed(2)} ANX`,
+      subValue: `Current balance`,
+      change: '+12.5%',
+      changeType: 'positive',
       color: 'text-purple-600',
-      description: 'All user token purchases'
+      bgColor: 'bg-purple-50',
+    },
+    {
+      icon: ShoppingCart,
+      label: 'Models Purchased',
+      value: blockchainStats?.totalPurchases || 0,
+      subValue: `Total purchases`,
+      change: '+8.2%',
+      changeType: 'positive',
+      color: 'text-green-600',
+      bgColor: 'bg-green-50',
     },
     {
       icon: DollarSign,
-      title: 'Total Platform Revenue',
-      value: `${totalRevenue.toFixed(4)} ETH`,
-      change: '+18%',
+      label: 'Models Sold',
+      value: blockchainStats?.totalSales || 0,
+      subValue: `Total sales`,
+      change: '+15.3%',
+      changeType: 'positive',
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-50',
+    },
+    {
+      icon: Activity,
+      label: 'ETH Spent',
+      value: `${(blockchainStats?.totalETHSpent || 0).toFixed(4)} ETH`,
+      subValue: `Total spent`,
+      change: '+22.1%',
+      changeType: 'positive',
       color: 'text-yellow-600',
-      description: 'Combined transaction volume'
+      bgColor: 'bg-yellow-50',
     },
   ];
 
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
+  if (blockchainLoading || profileLoading || dashboardLoading) {
+    return (
+      <div className="pt-20 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading dashboard data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 pt-20">
+    <div className="pt-20 min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <Link 
-            to="/" 
-            className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4 transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Home
-          </Link>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="text-center"
-          >
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              <span className="text-gray-900">AI Nexus </span>
-              <span className="gradient-text">Dashboard</span>
-            </h1>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Comprehensive analytics and insights for the AI Nexus marketplace. Track models, transactions, and user activity.
-            </p>
-          </motion.div>
-        </div>
+        {/* Dashboard Header */}
+        <motion.div
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8 }}
+          className="mb-8"
+        >
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Welcome back, {user?.username || user?.displayName || 'User'}!
+          </h1>
+          <p className="text-gray-600">Here's your AI Nexus Marketplace overview</p>
+        </motion.div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-          {statCards.map((stat, index) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {stats.map((stat, index) => (
             <motion.div
-              key={stat.title}
-              initial={{ opacity: 0, y: 50 }}
+              key={stat.label}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: index * 0.1 }}
-              className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 border border-gray-100"
+              className="card p-6 hover:shadow-lg transition-shadow duration-300"
             >
               <div className="flex items-center justify-between mb-4">
-                <stat.icon className={`h-8 w-8 ${stat.color}`} />
-                <span className="text-green-500 text-sm font-medium">{stat.change}</span>
+                <div className={`p-2 rounded-lg ${stat.bgColor}`}>
+                  <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                </div>
+                <span className={`text-sm font-medium ${
+                  stat.changeType === 'positive' ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  {stat.change}
+                </span>
               </div>
-              <div className="text-3xl font-bold text-gray-900 mb-2">
-                {typeof stat.value === 'number' ? stat.value.toLocaleString() : stat.value}
+              
+              <div className="mb-2">
+                <div className="text-2xl font-bold text-gray-900 mb-1">
+                  {stat.value}
+                </div>
+                <div className="text-sm text-gray-600">
+                  {stat.label}
+                </div>
               </div>
-              <div className="text-gray-900 font-semibold mb-1">{stat.title}</div>
-              <div className="text-sm text-gray-600">{stat.description}</div>
+              
+              <div className="text-xs text-gray-500">
+                {stat.subValue}
+              </div>
             </motion.div>
           ))}
         </div>
 
-        {/* Enhanced Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
-          {/* Volume Chart */}
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Recent Activity */}
           <motion.div
             initial={{ opacity: 0, x: -50 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8 }}
-            className="bg-white rounded-xl shadow-lg p-6 border border-gray-100"
+            transition={{ duration: 0.8, delay: 0.4 }}
+            className="lg:col-span-2"
           >
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold text-gray-900">Trading Volume Trend</h3>
-              <Activity className="h-5 w-5 text-blue-600" />
-            </div>
-            
-            {chartLoading ? (
-              <div className="h-64 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="card p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-gray-900">Recent Activity</h2>
+                <Clock className="h-5 w-5 text-gray-400" />
               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.1)" />
-                  <XAxis 
-                    dataKey="date" 
-                    stroke="rgba(0,0,0,0.6)"
-                    tickFormatter={(value) => format(new Date(value), 'MMM dd')}
-                  />
-                  <YAxis stroke="rgba(0,0,0,0.6)" />
-                  <Tooltip 
-                    contentStyle={{
-                      backgroundColor: 'white',
-                      border: '1px solid rgba(0,0,0,0.1)',
-                      borderRadius: '8px',
-                      color: '#1f2937'
-                    }}
-                    labelFormatter={(value) => format(new Date(value), 'MMM dd, yyyy')}
-                    formatter={(value: any) => [`${parseFloat(value).toFixed(4)} ETH`, 'Volume']}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="volume" 
-                    stroke="#3b82f6" 
-                    strokeWidth={2}
-                    dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
+              
+              {recentActivity.length > 0 ? (
+                <div className="space-y-4">
+                  {recentActivity.map((activity, index) => (
+                    <div key={index} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                      <div className={`p-2 rounded-full bg-white ${activity.color.replace('text-', 'bg-').replace('-600', '-100')}`}>
+                        <activity.icon className={`h-4 w-4 ${activity.color}`} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">{activity.title}</div>
+                        <div className="text-sm text-gray-600">
+                          {new Date(activity.timestamp).toLocaleDateString()} at {new Date(activity.timestamp).toLocaleTimeString()}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-semibold text-gray-900">{activity.amount}</div>
+                        <div className="text-xs text-gray-500 font-mono">
+                          {activity.txHash.slice(0, 8)}...{activity.txHash.slice(-6)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Activity className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">No recent activity</p>
+                  <p className="text-sm text-gray-500 mt-2">Your transactions will appear here</p>
+                </div>
+              )}
+            </div>
           </motion.div>
 
-          {/* Model Performance Chart */}
+          {/* Quick Actions & Info */}
           <motion.div
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8 }}
-            className="bg-white rounded-xl shadow-lg p-6 border border-gray-100"
+            transition={{ duration: 0.8, delay: 0.6 }}
+            className="space-y-6"
           >
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold text-gray-900">Top Model Revenue</h3>
-              <Star className="h-5 w-5 text-purple-600" />
+            {/* Quick Actions */}
+            <div className="card p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+              <div className="space-y-3">
+                <a
+                  href="/marketplace"
+                  className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  <ShoppingCart className="h-5 w-5 text-blue-600" />
+                  <span className="text-blue-900 font-medium">Browse Marketplace</span>
+                </a>
+                <a
+                  href="/marketplace?tab=list"
+                  className="flex items-center space-x-3 p-3 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
+                >
+                  <Star className="h-5 w-5 text-green-600" />
+                  <span className="text-green-900 font-medium">List New Model</span>
+                </a>
+                <a
+                  href="/profile"
+                  className="flex items-center space-x-3 p-3 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors"
+                >
+                  <Users className="h-5 w-5 text-purple-600" />
+                  <span className="text-purple-900 font-medium">View Profile</span>
+                </a>
+              </div>
             </div>
-            
-            {modelAnalytics?.topModels && modelAnalytics.topModels.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={modelAnalytics.topModels.slice(0, 8)}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.1)" />
-                  <XAxis 
-                    dataKey="name" 
-                    stroke="rgba(0,0,0,0.6)"
-                    angle={-45}
-                    textAnchor="end"
-                    height={80}
-                    interval={0}
-                    tick={{ fontSize: 10 }}
-                  />
-                  <YAxis stroke="rgba(0,0,0,0.6)" />
-                  <Tooltip 
-                    contentStyle={{
-                      backgroundColor: 'white',
-                      border: '1px solid rgba(0,0,0,0.1)',
-                      borderRadius: '8px',
-                      color: '#1f2937'
-                    }}
-                    formatter={(value: any) => [`${parseFloat(value).toFixed(4)} ETH`, 'Revenue']}
-                  />
-                  <Bar dataKey="revenue" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500">
-                No model data available
+
+            {/* Blockchain Stats */}
+            <div className="card p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Blockchain Stats</h3>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Total ETH Spent:</span>
+                  <span className="font-semibold">{(blockchainStats?.totalETHSpent || 0).toFixed(4)} ETH</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Token Volume:</span>
+                  <span className="font-semibold">{(blockchainStats?.totalTokenVolume || 0).toFixed(0)} ANX</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Total Transactions:</span>
+                  <span className="font-semibold">{(blockchainStats?.totalPurchases || 0) + (blockchainStats?.totalSales || 0)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Models Listed:</span>
+                  <span className="font-semibold">{listedModels.length}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Models */}
+            {listedModels.length > 0 && (
+              <div className="card p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Models</h3>
+                <div className="space-y-3">
+                  {listedModels.slice(0, 3).map((model: any) => (
+                    <div key={model._id} className="p-3 bg-gray-50 rounded-lg">
+                      <div className="font-medium text-gray-900">{model.name}</div>
+                      <div className="text-sm text-gray-600">{model.modelType}</div>
+                      <div className="text-sm font-semibold text-green-600">
+                        {parseFloat(model.price).toFixed(4)} ETH
+                      </div>
+                    </div>
+                  ))}
+                  {listedModels.length > 3 && (
+                    <div className="text-center">
+                      <a href="/profile?tab=models" className="text-blue-600 hover:text-blue-700 text-sm">
+                        View all {listedModels.length} models
+                      </a>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
-          </motion.div>
-        </div>
-
-        {/* Additional Analytics */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Category Distribution */}
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="bg-white rounded-xl shadow-lg p-6 border border-gray-100"
-          >
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold text-gray-900">Model Categories</h3>
-              <Package className="h-5 w-5 text-green-600" />
-            </div>
-            
-            {modelAnalytics?.categoryDistribution && modelAnalytics.categoryDistribution.length > 0 ? (
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie
-                    data={modelAnalytics.categoryDistribution}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {modelAnalytics.categoryDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{
-                      backgroundColor: 'white',
-                      border: '1px solid rgba(0,0,0,0.1)',
-                      borderRadius: '8px',
-                      color: '#1f2937'
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500">
-                No category data available
-              </div>
-            )}
-          </motion.div>
-
-          {/* Recent Activity */}
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className="bg-white rounded-xl shadow-lg p-6 border border-gray-100"
-          >
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold text-gray-900">Recent Activity</h3>
-              <Calendar className="h-5 w-5 text-blue-600" />
-            </div>
-            
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">New Model Listed</p>
-                    <p className="text-xs text-gray-600">2 hours ago</p>
-                  </div>
-                </div>
-                <span className="text-sm font-medium text-blue-600">+1</span>
-              </div>
-              
-              <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">Token Purchase</p>
-                    <p className="text-xs text-gray-600">4 hours ago</p>
-                  </div>
-                </div>
-                <span className="text-sm font-medium text-green-600">+0.05 ETH</span>
-              </div>
-              
-              <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">New User Joined</p>
-                    <p className="text-xs text-gray-600">6 hours ago</p>
-                  </div>
-                </div>
-                <span className="text-sm font-medium text-purple-600">+1</span>
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Platform Stats */}
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.4 }}
-            className="bg-white rounded-xl shadow-lg p-6 border border-gray-100"
-          >
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold text-gray-900">Platform Statistics</h3>
-              <BarChart3 className="h-5 w-5 text-yellow-600" />
-            </div>
-            
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600">Total Transactions</span>
-                <span className="font-semibold text-gray-900">{stats?.totalPurchases || 0}</span>
-              </div>
-              
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600">Average Price</span>
-                <span className="font-semibold text-gray-900">
-                  {stats?.totalPurchases && stats?.totalRevenue ? 
-                    (parseFloat(stats.totalRevenue) / stats.totalPurchases).toFixed(4) : '0'} ETH
-                </span>
-              </div>
-              
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600">Success Rate</span>
-                <span className="font-semibold text-green-600">98.5%</span>
-              </div>
-              
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600">Active Models</span>
-                <span className="font-semibold text-gray-900">{stats?.totalModels || 0}</span>
-              </div>
-            </div>
           </motion.div>
         </div>
       </div>

@@ -1,50 +1,74 @@
 import { motion } from 'framer-motion';
-import { User, TrendingUp, Download, Star, Calendar, Wallet, Mail } from 'lucide-react';
-import { useState } from 'react';
+import { User, TrendingUp, Download, Star, Calendar, Wallet, Mail, RefreshCw, Clock, CheckCircle, XCircle, Activity, BarChart3 } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useQuery } from '@tanstack/react-query';
+import { formatEther } from 'viem';
 import { userAPI, purchaseAPI, modelAPI } from '../services/api';
+import { useBlockchainData } from '../hooks/useBlockchainData';
 import ModelCard from '../components/ModelCard';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 export default function Profile() {
   const { address, isConnected } = useAccount();
   const [activeTab, setActiveTab] = useState('overview');
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [autoRefresh, setAutoRefresh] = useState(true);
+
+  // Fetch blockchain data with real-time updates
+  const { 
+    stats: blockchainStats, 
+    loading: blockchainLoading, 
+    tokenBalance, 
+    refetchAll: refetchBlockchainData 
+  } = useBlockchainData();
 
   // Fetch user profile
-  const { data: userProfile, isLoading: profileLoading } = useQuery({
+  const { data: userProfile, isLoading: profileLoading, refetch: refetchProfile } = useQuery({
     queryKey: ['userProfile', address],
     queryFn: () => address ? userAPI.getUserProfile(address) : null,
     enabled: !!address,
   });
 
   // Fetch user dashboard data
-  const { data: dashboardData, isLoading: dashboardLoading } = useQuery({
+  const { data: dashboardData, isLoading: dashboardLoading, refetch: refetchDashboard } = useQuery({
     queryKey: ['userDashboard', address],
     queryFn: () => address ? userAPI.getUserDashboard(address) : null,
     enabled: !!address,
   });
 
-  // Fetch user purchases
-  const { data: purchasesData, isLoading: purchasesLoading } = useQuery({
-    queryKey: ['userPurchases', address],
-    queryFn: () => address ? purchaseAPI.getUserPurchaseHistory(address) : null,
-    enabled: !!address,
-    refetchInterval: 5000, // Refetch every 5 seconds to get latest purchases
-  });
-
   // Fetch user's listed models
-  const { data: listedModelsData, isLoading: modelsLoading } = useQuery({
+  const { data: listedModelsData, isLoading: modelsLoading, refetch: refetchModels } = useQuery({
     queryKey: ['userModels', address],
     queryFn: () => address ? modelAPI.getModels({ sellerAddress: address }) : null,
     enabled: !!address,
   });
 
-  // Fetch user's sales history
-  const { data: salesData, isLoading: salesLoading } = useQuery({
-    queryKey: ['userSales', address],
-    queryFn: () => address ? userAPI.getUserSalesHistory(address) : null,
-    enabled: !!address,
-  });
+  // Auto-refresh data
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(() => {
+      refetchBlockchainData();
+      refetchProfile();
+      refetchDashboard();
+      refetchModels();
+      setLastUpdate(new Date());
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, refetchBlockchainData, refetchProfile, refetchDashboard, refetchModels]);
+
+  // Manual refresh function
+  const handleManualRefresh = async () => {
+    await Promise.all([
+      refetchBlockchainData(),
+      refetchProfile(),
+      refetchDashboard(),
+      refetchModels()
+    ]);
+    setLastUpdate(new Date());
+  };
 
   if (!isConnected) {
     return (
@@ -60,99 +84,100 @@ export default function Profile() {
 
   const user = userProfile?.data;
   const dashboard = dashboardData?.data;
-  const purchases = Array.isArray(purchasesData?.data?.docs) ? purchasesData.data.docs : [];
   const listedModels = Array.isArray(listedModelsData?.data) ? listedModelsData.data : [];
-  const sales = Array.isArray(salesData?.data?.sales) ? salesData.data.sales : [];
 
-  // Calculate total ETH spent on tokens from purchase history
-  const totalETHSpentOnTokens = purchases.reduce((total: number, purchase: any) => {
-    // Check if this is a token purchase (either by transaction type or by having priceInTokens)
-    const isTokenPurchase = purchase.transactionType === 'token_purchase' || 
-                           purchase.transactionType === 'contract_model_purchase' ||
-                           purchase.transactionType === 'database_model_purchase' ||
-                           (purchase.priceInTokens && parseFloat(purchase.priceInTokens) > 0);
-    
-    if (isTokenPurchase) {
-      // Use the priceInETH field which should contain the ETH equivalent
-      let ethAmount = parseFloat(purchase.priceInETH || '0');
-      
-      // If priceInETH is 0 but we have priceInTokens, calculate ETH equivalent
-      // (assuming 1000 tokens = 1 ETH as per the conversion rate used in ModelCard)
-      if (ethAmount === 0 && purchase.priceInTokens) {
-        const tokenAmount = parseFloat(purchase.priceInTokens);
-        ethAmount = tokenAmount / 1000; // Convert tokens to ETH
-      }
-      
-      // Ensure we have a valid ETH amount
-      if (ethAmount > 0) {
-        return total + ethAmount;
-      }
-    }
-    return total;
-  }, 0);
+  // Use blockchain data for purchases and stats
+  const purchases = blockchainStats?.purchaseHistory || [];
+  const sales = blockchainStats?.salesHistory || [];
 
   // Debug logging
-  console.log('Profile Debug:', {
+  console.log('Profile Blockchain Debug:', {
     address,
-    purchasesData: purchasesData?.data,
-    purchases,
-    purchasesLoading,
-    totalETHSpentOnTokens,
+    blockchainStats,
+    blockchainLoading,
+    tokenBalance,
     purchaseCount: purchases.length,
-    tokenPurchases: purchases.filter((p: any) => {
-      const isTokenPurchase = p.transactionType === 'token_purchase' || 
-                             p.transactionType === 'contract_model_purchase' ||
-                             p.transactionType === 'database_model_purchase' ||
-                             (p.priceInTokens && parseFloat(p.priceInTokens) > 0);
-      return isTokenPurchase;
-    }).map((p: any) => ({
-      id: p._id,
-      modelName: p.modelId?.name,
-      priceInETH: p.priceInETH,
-      priceInTokens: p.priceInTokens,
-      transactionType: p.transactionType,
-      calculatedETH: p.priceInETH === '0' ? parseFloat(p.priceInTokens || '0') / 1000 : parseFloat(p.priceInETH || '0')
-    }))
+    salesCount: sales.length,
+    totalETHSpent: blockchainStats?.totalETHSpent,
+    totalTokenVolume: blockchainStats?.totalTokenVolume,
   });
 
-  // Show loading state for purchases
-  if (purchasesLoading) {
+  // Show loading state for blockchain data
+  if (blockchainLoading) {
     return (
       <div className="pt-20 min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading profile data...</p>
+          <p className="text-gray-600">Loading blockchain data...</p>
         </div>
       </div>
     );
   }
 
+  // Prepare transaction data for charts
+  const transactionData = [
+    ...purchases.map((purchase: any) => ({
+      date: new Date(purchase.timestamp * 1000).toLocaleDateString(),
+      amount: parseFloat(formatEther(BigInt(purchase.price || '0'))),
+      type: 'Purchase',
+      timestamp: purchase.timestamp * 1000
+    })),
+    ...sales.map((sale: any) => ({
+      date: new Date(sale.timestamp * 1000).toLocaleDateString(),
+      amount: parseFloat(formatEther(BigInt(sale.sellerAmount || '0'))),
+      type: 'Sale',
+      timestamp: sale.timestamp * 1000
+    }))
+  ].sort((a, b) => a.timestamp - b.timestamp);
+
+  // Group transactions by date for chart
+  const chartData = transactionData.reduce((acc: any[], tx) => {
+    const existing = acc.find(item => item.date === tx.date);
+    if (existing) {
+      existing.purchases += tx.type === 'Purchase' ? tx.amount : 0;
+      existing.sales += tx.type === 'Sale' ? tx.amount : 0;
+      existing.total += tx.amount;
+    } else {
+      acc.push({
+        date: tx.date,
+        purchases: tx.type === 'Purchase' ? tx.amount : 0,
+        sales: tx.type === 'Sale' ? tx.amount : 0,
+        total: tx.amount
+      });
+    }
+    return acc;
+  }, []);
+
   const stats = [
     {
       icon: TrendingUp,
-      label: 'Total Token Earnings',
-      value: `${dashboard?.stats?.totalTokenEarnings || '0'} ANX`,
-      subValue: `Token Sales: ${dashboard?.stats?.tokenSales || '0'}`,
+      label: 'Total Token Balance',
+      value: `${parseFloat(tokenBalance || '0').toFixed(2)} ANX`,
+      subValue: `Current token balance`,
       color: 'text-purple-600',
+      realTime: true
     },
     {
       icon: Download,
       label: 'Models Listed',
       value: dashboard?.stats?.totalListings || 0,
       color: 'text-blue-600',
+      realTime: false
     },
     {
       icon: Star,
       label: 'Models Purchased',
-      value: dashboard?.stats?.totalPurchases || 0,
+      value: blockchainStats?.totalPurchases || 0,
       color: 'text-yellow-600',
+      realTime: true
     },
     {
       icon: Wallet,
       label: 'ETH Spent on Tokens',
-      value: `${totalETHSpentOnTokens.toFixed(4)} ETH`,
-      subValue: `Total spent on ANX tokens`,
+      value: `${(blockchainStats?.totalETHSpent || 0).toFixed(4)} ETH`,
+      subValue: `Total spent on blockchain transactions`,
       color: 'text-green-600',
+      realTime: true
     },
   ];
 
@@ -161,6 +186,7 @@ export default function Profile() {
     { id: 'earnings', label: 'Earnings', icon: TrendingUp },
     { id: 'models', label: 'My Models', icon: TrendingUp },
     { id: 'purchases', label: 'Purchases', icon: Download },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   ];
 
   return (
@@ -222,6 +248,33 @@ export default function Profile() {
                 )}
               </div>
             </div>
+
+            {/* Real-time controls */}
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleManualRefresh}
+                disabled={blockchainLoading}
+                className="flex items-center space-x-1 px-3 py-2 text-sm bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-lg transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${blockchainLoading ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+              
+              <button
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+                  autoRefresh 
+                    ? 'bg-green-100 hover:bg-green-200 text-green-800' 
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
+                }`}
+              >
+                {autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 text-xs text-gray-500">
+            Last updated: {lastUpdate.toLocaleTimeString()}
           </div>
         </motion.div>
 
@@ -233,8 +286,13 @@ export default function Profile() {
               initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: index * 0.1 }}
-              className="card p-6 text-center"
+              className="card p-6 text-center relative"
             >
+              {/* Real-time indicator */}
+              {stat.realTime && (
+                <div className="absolute top-2 right-2 w-2 h-2 bg-purple-500 rounded-full animate-pulse" title="Real-time data"></div>
+              )}
+              
               <div className={`flex justify-center mb-3`}>
                 <stat.icon className={`h-8 w-8 ${stat.color}`} />
               </div>
@@ -305,19 +363,13 @@ export default function Profile() {
                       <h4 className="font-semibold text-green-800">ETH Spent on Tokens</h4>
                     </div>
                     <div className="text-2xl font-bold text-green-900 mb-1">
-                      {totalETHSpentOnTokens.toFixed(4)} ETH
+                      {(blockchainStats?.totalETHSpent || 0).toFixed(4)} ETH
                     </div>
                     <div className="text-sm text-green-700">
-                      Total spent on ANX tokens
+                      Total spent on blockchain transactions
                     </div>
                     <div className="text-xs text-green-600 mt-1">
-                      {purchases.filter((p: any) => {
-                        const isTokenPurchase = p.transactionType === 'token_purchase' || 
-                                               p.transactionType === 'contract_model_purchase' ||
-                                               p.transactionType === 'database_model_purchase' ||
-                                               (p.priceInTokens && parseFloat(p.priceInTokens) > 0);
-                        return isTokenPurchase;
-                      }).length} token purchases
+                      {purchases.length} token purchases
                     </div>
                   </div>
                 </div>
@@ -386,11 +438,11 @@ export default function Profile() {
                 
                 <div className="card p-6 text-center">
                   <div className="text-3xl font-bold text-green-600 mb-2">
-                    {totalETHSpentOnTokens.toFixed(4)}
+                    {(blockchainStats?.totalETHSpent || 0).toFixed(4)}
                   </div>
                   <div className="text-gray-600 mb-1">ETH Spent on Tokens</div>
                   <div className="text-sm text-green-600">
-                    Total spent on ANX tokens
+                    Total spent on blockchain transactions
                   </div>
                 </div>
                 
@@ -417,7 +469,7 @@ export default function Profile() {
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-gray-900 mb-1">
-                      {totalETHSpentOnTokens.toFixed(4)} ETH
+                      {(blockchainStats?.totalETHSpent || 0).toFixed(4)} ETH
                     </div>
                     <div className="text-gray-600">Total ETH Spent on ANX</div>
                   </div>
@@ -427,11 +479,7 @@ export default function Profile() {
               {/* Sales History */}
               <div className="card p-6">
                 <h3 className="text-xl font-semibold text-gray-900 mb-4">Sales History</h3>
-                {salesLoading ? (
-                  <div className="flex justify-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  </div>
-                ) : sales.length > 0 ? (
+                {sales.length > 0 ? (
                   <div className="space-y-4">
                     {sales.map((sale: any) => {
                       const isTokenSale = sale.transactionType === 'token_purchase' || 
@@ -445,7 +493,7 @@ export default function Profile() {
                           <div className="flex-1">
                             <div className="flex items-center space-x-3 mb-1">
                               <h4 className="font-semibold text-gray-900">
-                                {sale.modelId?.name || 'Unknown Model'}
+                                {sale.modelId || 'Unknown Model'}
                               </h4>
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                                 isTokenSale 
@@ -527,104 +575,109 @@ export default function Profile() {
                 <span className="text-gray-600">{purchases.length} purchases</span>
               </div>
               
-              {/* Debug info - commented out for production
-              {process.env.NODE_ENV === 'development' && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                  <h4 className="font-semibold text-yellow-800 mb-2">Debug Info:</h4>
-                  <p className="text-sm text-yellow-700">
-                    Address: {address}<br/>
-                    Purchases Count: {purchases.length}<br/>
-                    Total ETH Spent: {totalETHSpentOnTokens.toFixed(4)} ETH<br/>
-                    Token Purchases: {purchases.filter((p: any) => {
-                      const isTokenPurchase = p.transactionType === 'token_purchase' || 
-                                             p.transactionType === 'contract_model_purchase' ||
-                                             p.transactionType === 'database_model_purchase' ||
-                                             (p.priceInTokens && parseFloat(p.priceInTokens) > 0);
-                      return isTokenPurchase;
-                    }).length}<br/>
-                    <br/>
-                    <strong>Purchase Details:</strong><br/>
-                    {purchases.map((p: any, index: number) => (
-                      <div key={p._id} className="mt-2 p-2 bg-yellow-100 rounded">
-                        {index + 1}. {p.modelId?.name}<br/>
-                        - Price in ETH: {p.priceInETH}<br/>
-                        - Price in Tokens: {p.priceInTokens}<br/>
-                        - Type: {p.transactionType}<br/>
-                        - Calculated ETH: {p.priceInETH === '0' ? (parseFloat(p.priceInTokens || '0') / 1000).toFixed(4) : p.priceInETH} ETH
-                      </div>
-                    ))}
-                  </p>
-                </div>
-              )}
-              */}
-              
-              {purchasesLoading ? (
-                <div className="flex justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                </div>
-              ) : purchases.length > 0 ? (
+              {purchases.length > 0 ? (
                 <div className="space-y-4">
-                  {purchases.map((purchase: any) => {
-                    // Determine payment method and amount
-                    const isTokenPurchase = purchase.transactionType === 'token_purchase' || 
-                                           (purchase.priceInTokens && parseFloat(purchase.priceInTokens) > 0);
-                    const paymentAmount = isTokenPurchase 
-                      ? `${purchase.priceInTokens || '0'} ANX`
-                      : `${purchase.priceInETH || '0'} ETH`;
-                    const paymentMethod = isTokenPurchase ? 'Token' : 'ETH';
+                  {purchases.map((purchase: any, index: number) => {
+                    const purchaseDate = new Date(purchase.timestamp * 1000);
+                    const priceInETH = parseFloat(formatEther(BigInt(purchase.price || '0')));
+                    const platformFeeInETH = parseFloat(formatEther(BigInt(purchase.platformFee || '0')));
+                    const sellerAmountInETH = parseFloat(formatEther(BigInt(purchase.sellerAmount || '0')));
                     
                     return (
-                    <div key={purchase._id} className="card p-6">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                            <div className="flex items-center space-x-2 mb-2">
-                              <h4 className="text-lg font-semibold text-gray-900">
-                            {purchase.modelId?.name || 'Unknown Model'}
-                          </h4>
-                              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                                isTokenPurchase 
-                                  ? 'bg-purple-100 text-purple-800 border border-purple-200' 
-                                  : 'bg-blue-100 text-blue-800 border border-blue-200'
+                      <div key={index} className="border rounded-lg p-6 bg-white shadow-sm hover:shadow-md transition-shadow">
+                        {/* Header with model info and total price */}
+                        <div className="flex justify-between items-start mb-4">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-3 mb-2">
+                              <h4 className="font-semibold text-gray-900 text-lg">
+                                {purchase.modelId || `Model ${purchase.contractModelId}`}
+                              </h4>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                purchase.isDatabaseModel 
+                                  ? 'bg-blue-100 text-blue-800' 
+                                  : 'bg-purple-100 text-purple-800'
                               }`}>
-                                {paymentMethod} Payment
+                                {purchase.isDatabaseModel ? 'Database Model' : 'Contract Model'}
                               </span>
                             </div>
-                          <p className="text-gray-600 mb-2">
-                            {purchase.modelId?.description || 'No description available'}
-                          </p>
-                          <div className="flex items-center space-x-4 text-sm text-gray-600">
-                            <span>Purchased: {new Date(purchase.createdAt).toLocaleDateString()}</span>
-                              <span className="font-medium">Price: {paymentAmount}</span>
-                              <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
-                                {purchase.txHash?.slice(0, 10)}...{purchase.txHash?.slice(-8)}
-                              </span>
-                              {purchase.status && (
-                                <span className={`px-2 py-1 rounded-full text-xs ${
-                                  purchase.status === 'confirmed' 
-                                    ? 'bg-green-100 text-green-800'
-                                    : purchase.status === 'pending'
-                                    ? 'bg-yellow-100 text-yellow-800'
-                                    : 'bg-red-100 text-red-800'
-                                }`}>
-                                  {purchase.status}
-                                </span>
-                              )}
+                            <p className="text-sm text-gray-600">
+                              Purchased from {purchase.seller.slice(0, 6)}...{purchase.seller.slice(-4)}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {purchaseDate.toLocaleDateString()} at {purchaseDate.toLocaleTimeString()}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-bold text-green-600 text-xl">
+                              {priceInETH.toFixed(4)} ETH
+                            </div>
+                            <div className="text-sm text-gray-600">Total Price</div>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <div className={`text-lg font-semibold ${
-                            isTokenPurchase ? 'text-purple-600' : 'text-blue-600'
-                          }`}>
-                              {paymentAmount}
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            ${purchase.priceInUSD || '0'}
+
+                        {/* Transaction breakdown */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
+                          <div className="text-center">
+                            <div className="text-lg font-semibold text-green-600">
+                              {sellerAmountInETH.toFixed(4)} ETH
                             </div>
-                            {purchase.transactionType && (
-                              <div className="text-xs text-gray-500 mt-1">
-                                {purchase.transactionType.replace(/_/g, ' ')}
+                            <div className="text-xs text-gray-600">Seller Amount</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-semibold text-orange-600">
+                              {platformFeeInETH.toFixed(4)} ETH
+                            </div>
+                            <div className="text-xs text-gray-600">Platform Fee</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-semibold text-blue-600">
+                              {((platformFeeInETH / priceInETH) * 100).toFixed(1)}%
+                            </div>
+                            <div className="text-xs text-gray-600">Fee Rate</div>
+                          </div>
+                        </div>
+
+                        {/* Transaction details */}
+                        <div className="border-t pt-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <div className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Transaction Hash:</span>
+                                <span className="font-mono text-gray-900">
+                                  {purchase.txHash.slice(0, 8)}...{purchase.txHash.slice(-6)}
+                                </span>
                               </div>
-                            )}
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Block Number:</span>
+                                <span className="font-mono text-gray-900">{purchase.blockNumber}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Buyer:</span>
+                                <span className="font-mono text-gray-900">
+                                  {purchase.buyer.slice(0, 6)}...{purchase.buyer.slice(-4)}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Seller:</span>
+                                <span className="font-mono text-gray-900">
+                                  {purchase.seller.slice(0, 6)}...{purchase.seller.slice(-4)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Model ID:</span>
+                                <span className="font-mono text-gray-900">
+                                  {purchase.contractModelId || 'N/A'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Type:</span>
+                                <span className="text-gray-900">
+                                  {purchase.isDatabaseModel ? 'Database' : 'Smart Contract'}
+                                </span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -634,18 +687,116 @@ export default function Profile() {
               ) : (
                 <div className="text-center py-12">
                   <Download className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-2">No purchases yet</p>
-                  <p className="text-sm text-gray-500">
-                    Start exploring the marketplace to find AI models to purchase
-                  </p>
-                  <a 
-                    href="/marketplace" 
-                    className="inline-block mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Browse Marketplace
-                  </a>
+                  <p className="text-gray-600">No purchases found</p>
+                  <p className="text-sm text-gray-500 mt-2">Your purchase history will appear here</p>
                 </div>
               )}
+            </motion.div>
+          )}
+
+          {activeTab === 'analytics' && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="space-y-6"
+            >
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Transaction History Chart */}
+                <div className="card p-6">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-4">Transaction History</h3>
+                  {chartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.1)" />
+                        <XAxis 
+                          dataKey="date" 
+                          stroke="rgba(0,0,0,0.6)"
+                        />
+                        <YAxis stroke="rgba(0,0,0,0.6)" />
+                        <Tooltip 
+                          contentStyle={{
+                            backgroundColor: 'white',
+                            border: '1px solid rgba(0,0,0,0.1)',
+                            borderRadius: '8px',
+                            color: '#1f2937'
+                          }}
+                          formatter={(value: any) => [`${parseFloat(value).toFixed(4)} ETH`, 'Amount']}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="total" 
+                          stroke="#3b82f6" 
+                          strokeWidth={2}
+                          dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center text-gray-500">
+                      <p>No transaction data available</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Purchase vs Sales Chart */}
+                <div className="card p-6">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-4">Purchases vs Sales</h3>
+                  {chartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.1)" />
+                        <XAxis 
+                          dataKey="date" 
+                          stroke="rgba(0,0,0,0.6)"
+                        />
+                        <YAxis stroke="rgba(0,0,0,0.6)" />
+                        <Tooltip 
+                          contentStyle={{
+                            backgroundColor: 'white',
+                            border: '1px solid rgba(0,0,0,0.1)',
+                            borderRadius: '8px',
+                            color: '#1f2937'
+                          }}
+                          formatter={(value: any) => [`${parseFloat(value).toFixed(4)} ETH`, 'Amount']}
+                        />
+                        <Bar dataKey="purchases" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="sales" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center text-gray-500">
+                      <p>No transaction data available</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Transaction Statistics */}
+              <div className="card p-6">
+                <h3 className="text-xl font-semibold text-gray-900 mb-4">Transaction Statistics</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="text-center p-4 bg-red-50 rounded-lg">
+                    <div className="text-2xl font-bold text-red-600">{purchases.length}</div>
+                    <div className="text-sm text-gray-600">Total Purchases</div>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">{sales.length}</div>
+                    <div className="text-sm text-gray-600">Total Sales</div>
+                  </div>
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {(blockchainStats?.totalETHSpent || 0).toFixed(4)}
+                    </div>
+                    <div className="text-sm text-gray-600">ETH Spent</div>
+                  </div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {(blockchainStats?.totalETHReceived || 0).toFixed(4)}
+                    </div>
+                    <div className="text-sm text-gray-600">ETH Received</div>
+                  </div>
+                </div>
+              </div>
             </motion.div>
           )}
         </div>

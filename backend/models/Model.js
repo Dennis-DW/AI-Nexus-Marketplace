@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { PLATFORM_CONFIG, validateEthAddress, validateFileHash } = require('../config/constants');
 
 const modelSchema = new mongoose.Schema({
   name: {
@@ -10,7 +11,7 @@ const modelSchema = new mongoose.Schema({
   type: {
     type: String,
     required: [true, 'Model type is required'],
-    enum: ['NLP', 'Computer Vision', 'Audio', 'Generative', 'Prediction', 'Other'],
+    enum: PLATFORM_CONFIG.MODEL_TYPES,
     trim: true
   },
   description: {
@@ -35,7 +36,7 @@ const modelSchema = new mongoose.Schema({
     trim: true,
     validate: {
       validator: function(v) {
-        return /^[a-fA-F0-9]{64}$/.test(v);
+        return validateFileHash(v);
       },
       message: 'File hash must be a valid 64-character hexadecimal string'
     }
@@ -47,7 +48,7 @@ const modelSchema = new mongoose.Schema({
     lowercase: true,
     validate: {
       validator: function(v) {
-        return /^0x[a-fA-F0-9]{40}$/.test(v);
+        return validateEthAddress(v);
       },
       message: 'Seller address must be a valid Ethereum address'
     }

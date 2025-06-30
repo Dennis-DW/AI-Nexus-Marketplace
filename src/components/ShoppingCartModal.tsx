@@ -23,7 +23,7 @@ interface CartItem {
 export default function ShoppingCartModal() {
   const [isProcessing, setIsProcessing] = useState(false);
   const { address } = useAccount();
-  const { purchaseModel, isBuyingModel, purchaseModelWithToken, purchaseDatabaseModelWithToken } = useContract();
+  const { purchaseModelWithToken, purchaseDatabaseModelWithToken } = useContract();
   const { 
     state: { items, isCartOpen },
     setIsCartOpen,
@@ -89,7 +89,8 @@ export default function ShoppingCartModal() {
             transactionType: 'contract_model_purchase',
             tokenContractAddress: import.meta.env.VITE_TOKEN_CONTRACT_ADDRESS,
             tokenSymbol: 'ANX',
-            tokenDecimals: 18
+            tokenDecimals: 18,
+            isContractModel: true
           });
         } else {
           // Purchase database model with tokens
@@ -111,7 +112,8 @@ export default function ShoppingCartModal() {
             transactionType: 'database_model_purchase',
             tokenContractAddress: import.meta.env.VITE_TOKEN_CONTRACT_ADDRESS,
             tokenSymbol: 'ANX',
-            tokenDecimals: 18
+            tokenDecimals: 18,
+            isContractModel: false
           });
         }
       }
@@ -163,7 +165,8 @@ export default function ShoppingCartModal() {
           transactionType: 'contract_model_purchase',
           tokenContractAddress: import.meta.env.VITE_TOKEN_CONTRACT_ADDRESS,
           tokenSymbol: 'ANX',
-          tokenDecimals: 18
+          tokenDecimals: 18,
+          isContractModel: true
         });
       } else {
         // Purchase database model with tokens
@@ -186,7 +189,8 @@ export default function ShoppingCartModal() {
           transactionType: 'database_model_purchase',
           tokenContractAddress: import.meta.env.VITE_TOKEN_CONTRACT_ADDRESS,
           tokenSymbol: 'ANX',
-          tokenDecimals: 18
+          tokenDecimals: 18,
+          isContractModel: false
         });
       }
 
@@ -355,7 +359,7 @@ export default function ShoppingCartModal() {
                           <div className="flex flex-col space-y-2">
                             <button
                               onClick={() => handlePurchaseItem(item)}
-                              disabled={isProcessing || isBuyingModel}
+                              disabled={isProcessing}
                               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
                             >
                               {isProcessing ? (
@@ -398,7 +402,7 @@ export default function ShoppingCartModal() {
                           </button>
                           <button
                             onClick={handlePurchaseAll}
-                            disabled={isProcessing || isBuyingModel || items.length === 0}
+                            disabled={isProcessing || items.length === 0}
                             className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
                           >
                             {isProcessing ? (

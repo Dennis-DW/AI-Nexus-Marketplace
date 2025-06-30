@@ -3,9 +3,12 @@ const mongoosePaginate = require('mongoose-paginate-v2');
 
 const purchaseSchema = new mongoose.Schema({
   modelId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Model',
+    type: mongoose.Schema.Types.Mixed, // Can be ObjectId or Number
     required: [true, 'Model ID is required']
+  },
+  isContractModel: {
+    type: Boolean,
+    default: false
   },
   contractModelId: {
     type: Number,

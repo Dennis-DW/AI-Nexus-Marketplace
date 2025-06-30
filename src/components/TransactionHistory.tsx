@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ExternalLink, Clock, CheckCircle, XCircle, AlertCircle, Filter, Download } from 'lucide-react';
+import { ExternalLink, Clock, CheckCircle, XCircle, AlertCircle, Filter, Download, RefreshCw, Activity } from 'lucide-react';
 import { purchaseAPI } from '../services/api';
 import { useAccount } from 'wagmi';
+import { useBlockchainData } from '../hooks/useBlockchainData';
+import { formatEther } from 'viem';
 import toast from 'react-hot-toast';
 
 interface Transaction {
@@ -35,12 +37,14 @@ interface TransactionHistoryProps {
   address?: string;
   showFilters?: boolean;
   limit?: number;
+  showBlockchainData?: boolean;
 }
 
 export default function TransactionHistory({ 
   address, 
   showFilters = true, 
-  limit = 10 
+  limit = 10,
+  showBlockchainData = true
 }: TransactionHistoryProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,15 +58,36 @@ export default function TransactionHistory({
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [autoRefresh, setAutoRefresh] = useState(true);
   
   const { address: connectedAddress } = useAccount();
   const displayAddress = address || connectedAddress;
+
+  // Fetch blockchain data for real-time updates
+  const { 
+    stats: blockchainStats, 
+    loading: blockchainLoading, 
+    refetchAll: refetchBlockchainData 
+  } = useBlockchainData();
 
   useEffect(() => {
     if (displayAddress) {
       loadTransactions();
     }
   }, [displayAddress, currentPage, filters]);
+
+  // Auto-refresh blockchain data
+  useEffect(() => {
+    if (!autoRefresh || !showBlockchainData) return;
+
+    const interval = setInterval(() => {
+      refetchBlockchainData();
+      setLastUpdate(new Date());
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, refetchBlockchainData, showBlockchainData]);
 
   const loadTransactions = async () => {
     if (!displayAddress) return;
@@ -114,6 +139,14 @@ export default function TransactionHistory({
       endDate: ''
     });
     setCurrentPage(1);
+  };
+
+  const handleManualRefresh = async () => {
+    await Promise.all([
+      loadTransactions(),
+      refetchBlockchainData()
+    ]);
+    setLastUpdate(new Date());
   };
 
   const getStatusIcon = (status: string) => {
@@ -213,14 +246,86 @@ export default function TransactionHistory({
           <h2 className="text-2xl font-bold text-gray-900">Transaction History</h2>
           <p className="text-gray-600">View all your blockchain transactions</p>
         </div>
-        <button
-          onClick={exportTransactions}
-          className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-        >
-          <Download className="h-4 w-4" />
-          <span>Export CSV</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handleManualRefresh}
+            disabled={loading || blockchainLoading}
+            className="flex items-center space-x-1 px-3 py-2 text-sm bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading || blockchainLoading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+          
+          {showBlockchainData && (
+            <button
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+                autoRefresh 
+                  ? 'bg-green-100 hover:bg-green-200 text-green-800' 
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
+              }`}
+            >
+              {autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}
+            </button>
+          )}
+          
+          <button
+            onClick={exportTransactions}
+            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+          >
+            <Download className="h-4 w-4" />
+            <span>Export CSV</span>
+          </button>
+        </div>
       </div>
+
+      {/* Real-time status */}
+      {showBlockchainData && (
+        <div className="flex items-center justify-between text-sm text-gray-600">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span>Live blockchain data</span>
+          </div>
+          <span>Last updated: {lastUpdate.toLocaleTimeString()}</span>
+        </div>
+      )}
+
+      {/* Blockchain Stats Summary */}
+      {showBlockchainData && blockchainStats && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white p-4 rounded-lg border border-gray-200"
+        >
+          <div className="flex items-center space-x-2 mb-3">
+            <Activity className="h-4 w-4 text-blue-600" />
+            <h3 className="font-medium text-gray-900">Blockchain Transaction Summary</h3>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="text-center">
+              <div className="text-lg font-bold text-blue-600">{blockchainStats.totalPurchases}</div>
+              <div className="text-sm text-gray-600">Total Purchases</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-bold text-green-600">{blockchainStats.totalSales}</div>
+              <div className="text-sm text-gray-600">Total Sales</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-bold text-purple-600">
+                {(blockchainStats.totalETHSpent || 0).toFixed(4)} ETH
+              </div>
+              <div className="text-sm text-gray-600">ETH Spent</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-bold text-orange-600">
+                {(blockchainStats.totalETHReceived || 0).toFixed(4)} ETH
+              </div>
+              <div className="text-sm text-gray-600">ETH Received</div>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Filters */}
       {showFilters && (

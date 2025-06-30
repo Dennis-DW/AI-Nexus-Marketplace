@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useToken } from '../contexts/TokenContext';
-import { Coins, Plus, CheckCircle, AlertCircle, ChevronDown, User, Settings, LogOut } from 'lucide-react';
+import { Coins, Plus, CheckCircle, AlertCircle, ChevronDown, User, Settings, LogOut, RefreshCw, Activity, TrendingUp, TrendingDown } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { MARKETPLACE_ADDRESS } from '../config/contracts';
+import { MARKETPLACE_ADDRESS, ANX_TOKEN_ADDRESS } from '../config/contracts';
+import { useBlockchainData } from '../hooks/useBlockchainData';
 
 export default function TokenBalance() {
   const { address, isConnected } = useAccount();
@@ -11,6 +12,35 @@ export default function TokenBalance() {
   const [showBuyModal, setShowBuyModal] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [ethAmount, setEthAmount] = useState('0.01');
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [previousBalance, setPreviousBalance] = useState('0');
+
+  // Fetch blockchain data for real-time updates
+  const { 
+    stats: blockchainStats, 
+    loading: blockchainLoading, 
+    refetchAll: refetchBlockchainData 
+  } = useBlockchainData();
+
+  // Auto-refresh data
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(() => {
+      refetchBlockchainData();
+      setLastUpdate(new Date());
+    }, 15000); // Refresh every 15 seconds for balance updates
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, refetchBlockchainData]);
+
+  // Track balance changes
+  useEffect(() => {
+    if (tokenBalance !== previousBalance) {
+      setPreviousBalance(tokenBalance);
+    }
+  }, [tokenBalance, previousBalance]);
 
   const handleBuyTokens = async () => {
     if (!ethAmount || parseFloat(ethAmount) <= 0) {
@@ -19,12 +49,45 @@ export default function TokenBalance() {
     }
 
     try {
+      console.log('=== BUY TOKENS DEBUG ===');
+      console.log('ETH Amount:', ethAmount);
+      console.log('User Address:', address);
+      console.log('Token Contract Address:', ANX_TOKEN_ADDRESS);
+      console.log('Marketplace Address:', MARKETPLACE_ADDRESS);
+      
       await buyTokens(ethAmount);
       toast.success('Tokens purchased successfully!');
       setShowBuyModal(false);
+      // Refresh blockchain data after purchase
+      refetchBlockchainData();
     } catch (error: any) {
       console.error('Buy tokens error:', error);
-      toast.error(error.message || 'Failed to buy tokens');
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack
+      });
+      
+      // Provide more specific error messages
+      let errorMessage = error.message || 'Failed to buy tokens';
+      
+      if (error.message.includes('Token contract address not configured')) {
+        errorMessage = 'Token contract not configured. Please check deployment.';
+      } else if (error.message.includes('Token contract not deployed')) {
+        errorMessage = 'Token contract not deployed. Please deploy the contract first.';
+      } else if (error.message.includes('insufficient funds')) {
+        errorMessage = 'Insufficient ETH balance for transaction';
+      } else if (error.message.includes('user rejected')) {
+        errorMessage = 'Transaction was cancelled';
+      } else if (error.message.includes('nonce too low')) {
+        errorMessage = 'Transaction error. Please try again.';
+      } else if (error.message.includes('gas required exceeds allowance')) {
+        errorMessage = 'Insufficient gas for transaction';
+      } else if (error.message.includes('execution reverted')) {
+        errorMessage = 'Transaction failed. Please check your input.';
+      }
+      
+      toast.error(errorMessage);
     }
   };
 
@@ -43,15 +106,25 @@ export default function TokenBalance() {
       disconnectWallet();
       setShowDropdown(false);
       toast.success('Wallet disconnected successfully');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Disconnect error:', error);
       toast.error('Failed to disconnect wallet');
     }
   };
 
+  const handleManualRefresh = async () => {
+    await refetchBlockchainData();
+    setLastUpdate(new Date());
+  };
+
   if (!isConnected) {
     return null;
   }
+
+  const currentBalance = parseFloat(tokenBalance || '0');
+  const prevBalance = parseFloat(previousBalance || '0');
+  const balanceChange = currentBalance - prevBalance;
+  const balanceChangePercent = prevBalance > 0 ? (balanceChange / prevBalance) * 100 : 0;
 
   return (
     <div className="relative">
@@ -68,8 +141,16 @@ export default function TokenBalance() {
             <div className="text-sm font-medium text-gray-900">
               {address?.slice(0, 6)}...{address?.slice(-4)}
             </div>
-            <div className="text-xs text-gray-500">
-              {parseFloat(tokenBalance).toFixed(2)} ANX
+            <div className="text-xs text-gray-500 flex items-center space-x-1">
+              <span>{currentBalance.toFixed(2)} ANX</span>
+              {balanceChange !== 0 && (
+                <span className={`flex items-center text-xs ${
+                  balanceChange > 0 ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  {balanceChange > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                  {Math.abs(balanceChange).toFixed(2)}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -80,21 +161,79 @@ export default function TokenBalance() {
       {showDropdown && (
         <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
           <div className="p-4">
+            {/* Real-time status */}
+            <div className="flex items-center justify-between mb-4 text-xs text-gray-600">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span>Live balance</span>
+              </div>
+              <span>{lastUpdate.toLocaleTimeString()}</span>
+            </div>
+
             {/* Token Balance Section */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="font-semibold text-gray-900">Token Balance</h4>
-                <Coins className="h-4 w-4 text-blue-600" />
+                <div className="flex items-center space-x-2">
+                  <Coins className="h-4 w-4 text-blue-600" />
+                  <button
+                    onClick={handleManualRefresh}
+                    disabled={blockchainLoading}
+                    className="p-1 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                    title="Refresh balance"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${blockchainLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
               </div>
               <div className="bg-blue-50 p-3 rounded-lg">
                 <div className="text-2xl font-bold text-blue-800">
-                  {parseFloat(tokenBalance).toFixed(2)} ANX
+                  {currentBalance.toFixed(2)} ANX
                 </div>
                 <div className="text-sm text-blue-600">
                   Available for purchases
                 </div>
+                {balanceChange !== 0 && (
+                  <div className={`text-xs mt-1 flex items-center space-x-1 ${
+                    balanceChange > 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {balanceChange > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                    <span>
+                      {balanceChange > 0 ? '+' : ''}{balanceChange.toFixed(2)} ANX 
+                      ({balanceChangePercent > 0 ? '+' : ''}{balanceChangePercent.toFixed(1)}%)
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Blockchain Transaction Summary */}
+            {blockchainStats && (
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Activity className="h-4 w-4 text-gray-600" />
+                  <h5 className="font-medium text-gray-900 text-sm">Recent Activity</h5>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-gray-600">Purchases:</span>
+                    <span className="font-medium ml-1">{blockchainStats.totalPurchases}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Sales:</span>
+                    <span className="font-medium ml-1">{blockchainStats.totalSales}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">ETH Spent:</span>
+                    <span className="font-medium ml-1">{(blockchainStats.totalETHSpent || 0).toFixed(4)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">ETH Received:</span>
+                    <span className="font-medium ml-1">{(blockchainStats.totalETHReceived || 0).toFixed(4)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Approval Status */}
             <div className="mb-4">
@@ -133,6 +272,21 @@ export default function TokenBalance() {
               >
                 <Plus className="h-4 w-4" />
                 <span>Buy ANX Tokens</span>
+              </button>
+            </div>
+
+            {/* Auto-refresh toggle */}
+            <div className="mb-4">
+              <button
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                className={`w-full flex items-center justify-center space-x-2 px-3 py-2 rounded text-sm transition-colors ${
+                  autoRefresh 
+                    ? 'bg-green-100 hover:bg-green-200 text-green-800' 
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
+                }`}
+              >
+                <div className={`w-2 h-2 rounded-full ${autoRefresh ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
+                <span>{autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}</span>
               </button>
             </div>
 

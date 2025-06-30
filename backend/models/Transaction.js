@@ -21,7 +21,7 @@ const transactionSchema = new mongoose.Schema({
   
   // Model information
   modelId: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.Mixed, // Can be ObjectId or Number
     ref: 'Model',
     required: [true, 'Model ID is required']
   },

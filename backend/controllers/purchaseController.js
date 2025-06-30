@@ -2,6 +2,14 @@ const Purchase = require('../models/Purchase');
 const Transaction = require('../models/Transaction');
 const Model = require('../models/Model');
 const { ethers } = require('ethers');
+const { 
+  calculatePlatformFee, 
+  calculateSellerAmount, 
+  validateEthAddress, 
+  validateTxHash,
+  getNetworkConfig,
+  PLATFORM_CONFIG 
+} = require('../config/constants');
 
 // Log a purchase
 const logPurchase = async (req, res) => {
@@ -21,18 +29,6 @@ const logPurchase = async (req, res) => {
       transactionType
     } = req.body;
 
-    // Debug logging
-    console.log('Received purchase data:', {
-      modelId,
-      contractModelId,
-      walletAddress,
-      sellerAddress,
-      txHash,
-      priceInETH,
-      transactionType,
-      txHashLength: txHash ? txHash.length : 0
-    });
-
     // Validate required fields
     if (!modelId || !walletAddress || !sellerAddress || !txHash || !priceInETH || !transactionType) {
       return res.status(400).json({
@@ -43,19 +39,26 @@ const logPurchase = async (req, res) => {
     }
 
     // Validate transaction type
-    if (!['database_model_purchase', 'contract_model_purchase'].includes(transactionType)) {
+    if (!Object.values(PLATFORM_CONFIG.TRANSACTION_TYPES).includes(transactionType)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid transaction type'
       });
     }
 
-    // Validate transaction hash format
-    if (!/^0x[a-fA-F0-9]+$/.test(txHash) || txHash.length < 3) {
+    // Validate addresses
+    if (!validateEthAddress(walletAddress) || !validateEthAddress(sellerAddress)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid transaction hash format',
-        receivedHash: txHash
+        message: 'Invalid wallet or seller address format'
+      });
+    }
+
+    // Validate transaction hash format
+    if (!validateTxHash(txHash)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid transaction hash format'
       });
     }
 
@@ -67,6 +70,9 @@ const logPurchase = async (req, res) => {
         message: 'Transaction already exists'
       });
     }
+
+    // Get network configuration
+    const networkConfig = getNetworkConfig(network);
 
     // Create purchase record
     const purchase = new Purchase({
@@ -81,10 +87,14 @@ const logPurchase = async (req, res) => {
       gasUsed,
       gasPrice,
       network,
-      status: 'confirmed'
+      status: PLATFORM_CONFIG.STATUS.CONFIRMED
     });
 
     await purchase.save();
+
+    // Calculate fees using utility functions
+    const platformFee = calculatePlatformFee(priceInETH);
+    const sellerAmount = calculateSellerAmount(priceInETH);
 
     // Create transaction record
     const transaction = new Transaction({
@@ -96,13 +106,13 @@ const logPurchase = async (req, res) => {
       priceInETH,
       priceInWei: ethers.parseEther(priceInETH).toString(),
       priceInUSD,
-      platformFee: (parseFloat(priceInETH) * 0.025).toString(), // 2.5% platform fee
-      platformFeePercentage: 2.5,
-      sellerAmount: (parseFloat(priceInETH) * 0.975).toString(), // 97.5% to seller
+      platformFee,
+      platformFeePercentage: PLATFORM_CONFIG.PLATFORM_FEE_PERCENTAGE,
+      sellerAmount,
       blockNumber: blockNumber || 0,
       network,
-      chainId: network === 'holesky' ? 17000 : network === 'ethereum' ? 1 : 1337,
-      status: 'confirmed',
+      chainId: networkConfig.chainId,
+      status: PLATFORM_CONFIG.STATUS.CONFIRMED,
       transactionType,
       confirmedAt: new Date()
     });
@@ -517,10 +527,11 @@ const logTokenPurchase = async (req, res) => {
       gasUsed,
       gasPrice,
       network = 'localhost',
-      transactionType = 'token_purchase',
+      transactionType = PLATFORM_CONFIG.TRANSACTION_TYPES.TOKEN_PURCHASE,
       tokenContractAddress,
       tokenSymbol = 'ANX',
-      tokenDecimals = 18
+      tokenDecimals = 18,
+      isContractModel = false
     } = req.body;
 
     // Validate required fields
@@ -528,6 +539,14 @@ const logTokenPurchase = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Missing required fields: modelId, walletAddress, sellerAddress, priceInTokens'
+      });
+    }
+
+    // Validate addresses
+    if (!validateEthAddress(walletAddress) || !validateEthAddress(sellerAddress)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid wallet or seller address format'
       });
     }
 
@@ -543,9 +562,13 @@ const logTokenPurchase = async (req, res) => {
       });
     }
 
+    // Get network configuration
+    const networkConfig = getNetworkConfig(network);
+
     // Create purchase record
     const purchase = new Purchase({
       modelId,
+      isContractModel,
       contractModelId: contractModelId || 0,
       walletAddress: walletAddress.toLowerCase(),
       sellerAddress: sellerAddress.toLowerCase(),
@@ -557,7 +580,7 @@ const logTokenPurchase = async (req, res) => {
       gasUsed,
       gasPrice,
       network,
-      status: 'confirmed',
+      status: PLATFORM_CONFIG.STATUS.CONFIRMED,
       transactionType,
       tokenContractAddress: tokenContractAddress || null,
       tokenSymbol,
@@ -565,6 +588,10 @@ const logTokenPurchase = async (req, res) => {
     });
 
     await purchase.save();
+
+    // Calculate fees using utility functions
+    const platformFee = calculatePlatformFee(priceInTokens);
+    const sellerAmount = calculateSellerAmount(priceInTokens);
 
     // Create transaction record
     const transaction = new Transaction({
@@ -576,23 +603,29 @@ const logTokenPurchase = async (req, res) => {
       priceInETH: '0',
       priceInWei: '0',
       priceInUSD,
-      platformFee: (parseFloat(priceInTokens) * 0.025).toString(), // 2.5% platform fee
-      platformFeePercentage: 2.5,
-      sellerAmount: (parseFloat(priceInTokens) * 0.975).toString(), // 97.5% to seller
+      platformFee,
+      platformFeePercentage: PLATFORM_CONFIG.PLATFORM_FEE_PERCENTAGE,
+      sellerAmount,
       blockNumber: blockNumber || 0,
       network,
-      chainId: network === 'holesky' ? 17000 : network === 'ethereum' ? 1 : 1337,
-      status: 'confirmed',
+      chainId: networkConfig.chainId,
+      status: PLATFORM_CONFIG.STATUS.CONFIRMED,
       transactionType,
       confirmedAt: new Date()
     });
 
     await transaction.save();
 
-    // Update model statistics
+    // Update model statistics only for database models
+    if (!isContractModel && modelId) {
+      try {
     await Model.findByIdAndUpdate(modelId, {
       $inc: { downloads: 1 }
     });
+      } catch (modelError) {
+        console.warn('Could not update model statistics:', modelError.message);
+      }
+    }
 
     res.status(201).json({
       success: true,

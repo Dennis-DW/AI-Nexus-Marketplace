@@ -5,6 +5,7 @@ import { TokenProvider } from './contexts/TokenContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import Header from './components/Header';
 import Footer from './components/Footer';
+import TransactionNotification from './components/TransactionNotification';
 
 // Pages
 import Home from './pages/Home';
@@ -47,6 +48,10 @@ function App() {
             <Route path="/dashboard" element={<Dashboard />} />
           </Routes>
           <Footer />
+          
+          {/* Real-time Transaction Notifications */}
+          <TransactionNotification showNotifications={true} maxNotifications={3} />
+          
           <Toaster 
             position="top-right"
             toastOptions={{

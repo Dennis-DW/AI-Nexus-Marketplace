@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { useAccount, useDisconnect } from 'wagmi';
+import { useAccount, useDisconnect, useReadContract, useWriteContract } from 'wagmi';
 import { ANX_TOKEN_ABI } from '../config/tokenABI';
 import { ANX_TOKEN_ADDRESS, MARKETPLACE_ADDRESS } from '../config/contracts';
 import { Contract, BrowserProvider, parseUnits, formatUnits, parseEther } from 'ethers';
 import { useNotification } from './NotificationContext';
+import { parseEther as viemParseEther } from 'viem';
 
 interface TokenContextProps {
   tokenBalance: string;
@@ -25,6 +26,31 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
   const [isApproved, setIsApproved] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Use wagmi hooks for better contract interaction
+  const { writeContractAsync: writeTokenContract } = useWriteContract();
+
+  // Read token balance using wagmi
+  const { data: balanceData, refetch: refetchBalance } = useReadContract({
+    address: ANX_TOKEN_ADDRESS as `0x${string}`,
+    abi: ANX_TOKEN_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: !!address && isConnected,
+    },
+  });
+
+  // Read allowance using wagmi
+  const { data: allowanceData, refetch: refetchAllowance } = useReadContract({
+    address: ANX_TOKEN_ADDRESS as `0x${string}`,
+    abi: ANX_TOKEN_ABI,
+    functionName: 'allowance',
+    args: address && MARKETPLACE_ADDRESS ? [address, MARKETPLACE_ADDRESS as `0x${string}`] : undefined,
+    query: {
+      enabled: !!address && isConnected && !!MARKETPLACE_ADDRESS,
+    },
+  });
+
   const getTokenContract = async () => {
     if (!window.ethereum) throw new Error('MetaMask not found');
     
@@ -45,18 +71,11 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
     if (!address || !isConnected) return;
     setLoading(true);
     try {
-      const contract = await getTokenContract();
-      const balance = await contract.balanceOf(address);
-      setTokenBalance(formatUnits(balance, 18));
+      await refetchBalance();
+      await refetchAllowance();
     } catch (e: any) {
-      // Only log errors that are not related to contract deployment
-      if (!e.message.includes('could not decode result data') && 
-          !e.message.includes('BAD_DATA') &&
-          e.message !== 'Please connect your wallet first') {
-        console.error('Error refreshing balance:', e);
-      }
+      console.error('Error refreshing balance:', e);
       setTokenBalance('0');
-      // Don't show notification for contract not deployed errors
       if (e.message !== 'Please connect your wallet first' && 
           !e.message.includes('could not decode result data') &&
           !e.message.includes('BAD_DATA')) {
@@ -74,13 +93,10 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
   const checkApproval = async (spender: string, minAmount: string) => {
     if (!address || !isConnected) return false;
     try {
-      const contract = await getTokenContract();
-      const allowance = await contract.allowance(address, spender);
-      setIsApproved(BigInt(allowance) >= parseUnits(minAmount, 18));
+      await refetchAllowance();
     } catch (e: any) {
       console.error('Error checking approval:', e);
       setIsApproved(false);
-      // Don't show notification for contract not deployed errors
       if (e.message !== 'Please connect your wallet first' && 
           !e.message.includes('could not decode result data') &&
           !e.message.includes('BAD_DATA')) {
@@ -103,17 +119,12 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
         autoClose: false
       });
 
-      const contract = await getTokenContract();
-      const tx = await contract.approve(spender, parseUnits(amount, 18));
-      
-      showNotification({
-        type: 'pending',
-        title: 'Approval Pending',
-        message: 'Waiting for approval transaction to be confirmed...',
-        autoClose: false
+      await writeTokenContract({
+        address: ANX_TOKEN_ADDRESS as `0x${string}`,
+        abi: ANX_TOKEN_ABI,
+        functionName: 'approve',
+        args: [spender as `0x${string}`, parseUnits(amount, 18)],
       });
-
-      await tx.wait();
       
       showNotification({
         type: 'success',
@@ -155,6 +166,17 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
         throw new Error('Insufficient ETH balance');
       }
 
+      // Validate contract address
+      if (!ANX_TOKEN_ADDRESS || ANX_TOKEN_ADDRESS === '0x0000000000000000000000000000000000000000') {
+        throw new Error('Token contract address not configured');
+      }
+
+      // Check if contract exists
+      const contractCode = await provider.getCode(ANX_TOKEN_ADDRESS);
+      if (contractCode === '0x') {
+        throw new Error('Token contract not deployed at the specified address');
+      }
+
       showNotification({
         type: 'pending',
         title: 'Buying Tokens',
@@ -162,11 +184,17 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
         autoClose: false
       });
 
-      const contract = await getTokenContract();
       console.log('Buying tokens with ETH amount:', ethAmount);
       console.log('Token contract address:', ANX_TOKEN_ADDRESS);
+      console.log('Required amount in wei:', requiredAmount.toString());
       
-      const tx = await contract.buyTokens({ value: requiredAmount });
+      // Use wagmi writeContract for better error handling
+      const result = await writeTokenContract({
+        address: ANX_TOKEN_ADDRESS as `0x${string}`,
+        abi: ANX_TOKEN_ABI,
+        functionName: 'buyTokens',
+        value: viemParseEther(ethAmount),
+      });
       
       showNotification({
         type: 'pending',
@@ -175,10 +203,7 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
         autoClose: false
       });
       
-      console.log('Transaction sent:', tx.hash);
-      
-      await tx.wait();
-      console.log('Transaction confirmed');
+      console.log('Transaction sent:', result);
       
       showNotification({
         type: 'success',
@@ -190,12 +215,30 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
       await refreshBalance();
     } catch (e: any) {
       console.error('Error buying tokens:', e);
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to buy tokens. Please try again.';
+      
+      if (e.message.includes('insufficient funds')) {
+        errorMessage = 'Insufficient ETH balance for transaction';
+      } else if (e.message.includes('user rejected')) {
+        errorMessage = 'Transaction was cancelled by user';
+      } else if (e.message.includes('nonce too low')) {
+        errorMessage = 'Transaction nonce error. Please try again.';
+      } else if (e.message.includes('gas required exceeds allowance')) {
+        errorMessage = 'Insufficient gas for transaction';
+      } else if (e.message.includes('execution reverted')) {
+        errorMessage = 'Transaction failed. Please check your input and try again.';
+      } else if (e.message) {
+        errorMessage = e.message;
+      }
+      
       showNotification({
         type: 'error',
         title: 'Token Purchase Failed',
-        message: e.message || 'Failed to buy tokens. Please try again.'
+        message: errorMessage
       });
-      throw new Error(e.message || 'Failed to buy tokens');
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -218,13 +261,22 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
+  // Update balance and approval when data changes
+  useEffect(() => {
+    if (balanceData) {
+      setTokenBalance(formatUnits(balanceData, 18));
+    }
+  }, [balanceData]);
+
+  useEffect(() => {
+    if (allowanceData && MARKETPLACE_ADDRESS) {
+      setIsApproved(BigInt(allowanceData) >= parseUnits('1000000', 18));
+    }
+  }, [allowanceData]);
+
   useEffect(() => {
     if (isConnected && address) {
       refreshBalance();
-      // Check approval for marketplace contract
-      if (MARKETPLACE_ADDRESS) {
-        checkApproval(MARKETPLACE_ADDRESS, '1000000');
-      }
     } else {
       // Reset state when disconnected
       setTokenBalance('0');

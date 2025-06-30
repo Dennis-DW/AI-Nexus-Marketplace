@@ -1,17 +1,45 @@
 import { motion } from 'framer-motion';
-import { TrendingUp, Users, Zap, DollarSign, Activity, Calendar, Star, Download, Package, BarChart3 } from 'lucide-react';
+import { TrendingUp, Users, Zap, DollarSign, Activity, Calendar, Star, Download, Package, BarChart3, RefreshCw, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { useMarketStats, useChartData } from '../hooks/useMarketData';
+import { useRevenue } from '../hooks/useRevenue';
 import { useQuery } from '@tanstack/react-query';
 import { modelAPI, purchaseAPI } from '../services/api';
 import { format } from 'date-fns';
+import { useAccount } from 'wagmi';
+import { useBlockchainData } from '../hooks/useBlockchainData';
+import { formatEther } from 'viem';
+import { useState, useEffect } from 'react';
 
 export default function Dashboard() {
+  const { address, isConnected } = useAccount();
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [autoRefresh, setAutoRefresh] = useState(true);
+
   const { data: stats, isLoading: statsLoading } = useMarketStats();
   const { data: chartData, isLoading: chartLoading } = useChartData(30);
+  
+  // Get contract revenue data
+  const { 
+    contractRevenue, 
+    eventRevenue, 
+    isLoadingRevenue,
+    currentETHPrice,
+    formatETH,
+    formatUSD,
+    TOKENS_PER_ETH
+  } = useRevenue();
+
+  // Fetch blockchain data for real-time updates
+  const { 
+    stats: blockchainStats, 
+    loading: blockchainLoading, 
+    tokenBalance, 
+    refetchAll: refetchBlockchainData 
+  } = useBlockchainData();
 
   // Fetch additional model analytics
-  const { data: modelAnalytics } = useQuery({
+  const { data: modelAnalytics, refetch: refetchModelAnalytics } = useQuery({
     queryKey: ['modelAnalytics'],
     queryFn: async () => {
       const [modelsResponse, purchasesResponse] = await Promise.all([
@@ -23,9 +51,9 @@ export default function Dashboard() {
       const purchases = purchasesResponse.data?.docs || [];
       
       // Calculate model performance metrics
-      const modelPerformance = models.map(model => {
-        const modelPurchases = purchases.filter(p => p.modelId === model._id);
-        const totalRevenue = modelPurchases.reduce((sum, p) => sum + parseFloat(p.priceInETH || '0'), 0);
+      const modelPerformance = models.map((model: any) => {
+        const modelPurchases = purchases.filter((p: any) => p.modelId === model._id);
+        const totalRevenue = modelPurchases.reduce((sum: number, p: any) => sum + parseFloat(p.priceInETH || '0'), 0);
         const totalDownloads = model.downloads || 0;
         const avgRating = model.rating || 0;
         
@@ -36,10 +64,10 @@ export default function Dashboard() {
           rating: avgRating,
           category: model.category || 'AI Model'
         };
-      }).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+      }).sort((a: any, b: any) => b.revenue - a.revenue).slice(0, 10);
 
       // Calculate category distribution
-      const categoryData = models.reduce((acc, model) => {
+      const categoryData = models.reduce((acc: Record<string, number>, model: any) => {
         const category = model.category || 'AI Model';
         acc[category] = (acc[category] || 0) + 1;
         return acc;
@@ -54,11 +82,49 @@ export default function Dashboard() {
         topModels: modelPerformance,
         categoryDistribution: pieData,
         totalModels: models.length,
-        totalRevenue: purchases.reduce((sum, p) => sum + parseFloat(p.priceInETH || '0'), 0)
+        totalRevenue: purchases.reduce((sum: number, p: any) => sum + parseFloat(p.priceInETH || '0'), 0)
       };
     },
-    refetchInterval: 60000, // Refetch every minute
+    refetchInterval: autoRefresh ? 30000 : false, // Refetch every 30 seconds if auto-refresh is enabled
   });
+
+  // Auto-refresh blockchain data
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(() => {
+      refetchBlockchainData();
+      refetchModelAnalytics();
+      setLastUpdate(new Date());
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, refetchBlockchainData, refetchModelAnalytics]);
+
+  // Manual refresh function
+  const handleManualRefresh = async () => {
+    await Promise.all([
+      refetchBlockchainData(),
+      refetchModelAnalytics()
+    ]);
+    setLastUpdate(new Date());
+  };
+
+  // Prioritize contract data for revenue statistics
+  const revenue = eventRevenue || contractRevenue;
+  const contractTotalRevenue = revenue ? parseFloat(revenue.totalRevenue) : 0;
+  const contractTotalRevenueUSD = revenue ? parseFloat(revenue.totalRevenueUSD) : 0;
+  
+  // Use API data for additional stats not available in contracts
+  const apiTotalRevenue = stats ? parseFloat(stats.totalRevenue || '0') : 0;
+  const totalTokenRevenue = stats ? parseFloat(stats.totalTokenRevenue || '0') : 0;
+  
+  // Use the higher value between contract and API data for display
+  const displayTotalRevenue = Math.max(contractTotalRevenue, apiTotalRevenue);
+
+  // Get real-time transaction data
+  const recentTransactions = blockchainStats?.purchaseHistory?.slice(0, 5) || [];
+  const recentSales = blockchainStats?.salesHistory?.slice(0, 5) || [];
 
   const statCards = [
     {
@@ -67,6 +133,8 @@ export default function Dashboard() {
       value: stats?.totalModels || 0,
       change: '+12%',
       color: 'text-blue-600',
+      source: 'API',
+      realTime: false
     },
     {
       icon: Users,
@@ -74,20 +142,27 @@ export default function Dashboard() {
       value: (stats?.uniqueBuyers || 0) + (stats?.uniqueSellers || 0),
       change: '+8%',
       color: 'text-green-600',
+      source: 'API',
+      realTime: false
     },
     {
       icon: Zap,
       title: 'ETH Volume',
-      value: `${parseFloat(stats?.totalRevenue || '0').toFixed(4)} ETH`,
+      value: `${formatETH(displayTotalRevenue.toString(), 4)} ETH`,
+      subValue: `$${formatUSD(contractTotalRevenueUSD.toString())}`,
       change: '+24%',
       color: 'text-purple-600',
+      source: revenue ? 'Contract' : 'API',
+      realTime: true
     },
     {
       icon: DollarSign,
       title: 'Token Volume',
-      value: `${parseFloat(stats?.totalTokenRevenue || '0').toFixed(0)} ANX`,
+      value: `${totalTokenRevenue.toFixed(0)} ANX`,
       change: '+18%',
       color: 'text-yellow-600',
+      source: 'API',
+      realTime: false
     },
   ];
 
@@ -110,6 +185,50 @@ export default function Dashboard() {
           <p className="text-xl text-black max-w-3xl mx-auto">
             Welcome to your AI Nexus dashboard. Track your models, sales, and marketplace activity with detailed analytics.
           </p>
+          
+          {/* Real-time status and controls */}
+          <div className="mt-6 flex items-center justify-center space-x-4">
+            <div className="flex items-center space-x-4 text-sm">
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
+                Contract Data
+              </span>
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                <div className="w-2 h-2 bg-blue-500 rounded-full mr-1"></div>
+                API Data
+              </span>
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                <div className="w-2 h-2 bg-purple-500 rounded-full mr-1"></div>
+                Real-time
+              </span>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleManualRefresh}
+                disabled={blockchainLoading}
+                className="flex items-center space-x-1 px-3 py-1 text-sm bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-lg transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3 w-3 ${blockchainLoading ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+              
+              <button
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                  autoRefresh 
+                    ? 'bg-green-100 hover:bg-green-200 text-green-800' 
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
+                }`}
+              >
+                {autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}
+              </button>
+            </div>
+          </div>
+          
+          <div className="mt-2 text-xs text-gray-500">
+            Last updated: {lastUpdate.toLocaleTimeString()}
+          </div>
         </motion.div>
 
         {/* Stats Grid */}
@@ -121,8 +240,18 @@ export default function Dashboard() {
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: index * 0.1 }}
               viewport={{ once: true }}
-              className="card p-6 hover:shadow-xl transition-all duration-300"
+              className="card p-6 hover:shadow-xl transition-all duration-300 relative"
             >
+              {/* Data source indicator */}
+              <div className={`absolute top-2 right-2 w-2 h-2 rounded-full ${
+                stat.source === 'Contract' ? 'bg-green-500' : 'bg-blue-500'
+              }`} title={`Data from ${stat.source}`}></div>
+              
+              {/* Real-time indicator */}
+              {stat.realTime && (
+                <div className="absolute top-2 left-2 w-2 h-2 bg-purple-500 rounded-full animate-pulse" title="Real-time data"></div>
+              )}
+              
               <div className="flex items-center justify-between mb-4">
                 <stat.icon className={`h-8 w-8 ${stat.color}`} />
                 <span className="text-green-500 text-sm font-medium">{stat.change}</span>
@@ -130,10 +259,120 @@ export default function Dashboard() {
               <div className="text-3xl font-bold text-gray-900 mb-2">
                 {typeof stat.value === 'number' ? stat.value.toLocaleString() : stat.value}
               </div>
+              {stat.subValue && (
+                <div className="text-sm text-gray-600 mb-1">{stat.subValue}</div>
+              )}
               <div className="text-black">{stat.title}</div>
             </motion.div>
           ))}
         </div>
+
+        {/* Real-time Transaction Feed */}
+        {isConnected && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            viewport={{ once: true }}
+            className="mb-12 card p-6"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-semibold text-gray-900">Live Transaction Feed</h3>
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-gray-600">Live</span>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Recent Purchases */}
+              <div>
+                <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                  <TrendingUp className="h-5 w-5 text-green-600 mr-2" />
+                  Recent Purchases
+                </h4>
+                <div className="space-y-3">
+                  {recentTransactions.length > 0 ? (
+                    recentTransactions.map((tx: any, index: number) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                            <span className="font-medium text-gray-900">
+                              {tx.modelId || `Model ${tx.contractModelId}`}
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            {tx.buyer?.slice(0, 6)}...{tx.buyer?.slice(-4)} → {tx.seller?.slice(0, 6)}...{tx.seller?.slice(-4)}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {new Date(tx.timestamp * 1000).toLocaleTimeString()}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-green-600">
+                            {parseFloat(formatEther(BigInt(tx.price || '0'))).toFixed(4)} ETH
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Block #{tx.blockNumber}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <Clock className="h-8 w-8 mx-auto mb-2" />
+                      <p>No recent purchases</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Recent Sales */}
+              <div>
+                <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                  <DollarSign className="h-5 w-5 text-blue-600 mr-2" />
+                  Recent Sales
+                </h4>
+                <div className="space-y-3">
+                  {recentSales.length > 0 ? (
+                    recentSales.map((sale: any, index: number) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle className="h-4 w-4 text-blue-600" />
+                            <span className="font-medium text-gray-900">
+                              {sale.modelId || `Model ${sale.contractModelId}`}
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            {sale.buyer?.slice(0, 6)}...{sale.buyer?.slice(-4)} → {sale.seller?.slice(0, 6)}...{sale.seller?.slice(-4)}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {new Date(sale.timestamp * 1000).toLocaleTimeString()}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-blue-600">
+                            {parseFloat(formatEther(BigInt(sale.sellerAmount || '0'))).toFixed(4)} ETH
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Block #{sale.blockNumber}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <Clock className="h-8 w-8 mx-auto mb-2" />
+                      <p>No recent sales</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {/* Enhanced Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">

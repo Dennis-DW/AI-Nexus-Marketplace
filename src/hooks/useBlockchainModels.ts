@@ -54,7 +54,7 @@ export function useBlockchainModels() {
           name: model.name,
           modelType: model.modelType,
           description: model.description,
-          price: ethers.formatEther(model.price),
+          price: ethers.formatEther(model.price.toString()),
           seller: model.seller,
           sold: model.sold,
           active: model.active,

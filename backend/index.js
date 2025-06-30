@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const connectDB = require('./utils/connectDB');
+const errorHandler = require('./middleware/errorHandler');
 const modelRoutes = require('./routes/modelRoutes');
 const userRoutes = require('./routes/userRoutes');
 const blogRoutes = require('./routes/blogRoutes');
@@ -18,13 +19,28 @@ const PORT = process.env.PORT || 3001;
 // Connect to MongoDB
 connectDB();
 
-// Middleware
+// Security middleware
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173', 'https://localhost:5173'],
-  credentials: true
+  origin: [
+    'http://localhost:3000', 
+    'http://localhost:5173', 
+    'https://localhost:5173',
+    process.env.FRONTEND_URL
+  ].filter(Boolean),
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+
+// Body parsing middleware
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
 
 // Routes
 app.use('/api', modelRoutes);
@@ -42,7 +58,8 @@ app.get('/health', (req, res) => {
     message: 'AI Nexus Marketplace Backend is running',
     timestamp: new Date().toISOString(),
     version: '1.0.0',
-    database: 'Connected'
+    database: 'Connected',
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -113,14 +130,7 @@ app.get('/api', (req, res) => {
 });
 
 // Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
-  });
-});
+app.use(errorHandler);
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -149,6 +159,7 @@ app.listen(PORT, () => {
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`📚 API info: http://localhost:${PORT}/api`);
   console.log(`🔗 Database: ${process.env.MONGODB_URI ? 'Remote MongoDB' : 'Local MongoDB'}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
 module.exports = app;

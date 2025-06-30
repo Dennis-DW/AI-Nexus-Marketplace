@@ -1,6 +1,6 @@
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Star, Download, Play, ShoppingCart, ExternalLink, Calendar, User, Heart } from 'lucide-react';
-import { useState } from 'react';
 import { useAccount } from 'wagmi';
 import { useContract } from '../hooks/useContract';
 import { purchaseAPI } from '../services/api';
@@ -10,24 +10,30 @@ import toast from 'react-hot-toast';
 import { parseEther } from 'viem';
 
 interface Model {
-  id?: number;
-  _id?: string;
+  _id: string;
+  id?: string;
   name: string;
-  category?: string;
-  modelType?: string;
-  type?: string;
-  price: string;
-  rating?: number;
-  downloads?: number;
+  type: string;
   description: string;
-  image?: string;
-  author?: string;
-  seller?: string;
+  price: string;
+  fileHash: string;
   sellerAddress?: string;
+  seller?: string;
   contractModelId?: number;
+  isActive?: boolean;
+  active?: boolean;
+  sold?: boolean;
+  tags: string[];
+  category: string;
+  downloads: number;
+  rating: number;
+  totalRatings: number;
+  createdAt: string;
+  updatedAt: string;
+  modelType?: string;
+  image?: string;
   totalSales?: number;
-  createdAt?: string;
-  tags?: string[];
+  author?: string;
 }
 
 interface ModelCardProps {
@@ -37,11 +43,66 @@ interface ModelCardProps {
 }
 
 export default function ModelCard({ model, isContractModel = false, displayMode = 'grid' }: ModelCardProps) {
-  const [isLoading, setIsLoading] = useState(false);
   const { address } = useAccount();
-  const { purchaseModelWithToken, purchaseDatabaseModelWithToken } = useContract();
+  const { purchaseModelWithToken, purchaseDatabaseModelWithToken, models: contractModels, totalModels, contractBalance, platformFeePercentage } = useContract();
   const { addToCart, isInCart, removeFromCart } = useCart();
   const { tokenBalance, buyTokens, approveToken, isApproved } = useToken();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Debug function to help identify blockchain purchase issues
+  const debugPurchase = () => {
+    console.log('=== MODEL CARD DEBUG ===');
+    console.log('Model:', {
+      id: model.id,
+      _id: model._id,
+      name: model.name,
+      contractModelId: model.contractModelId,
+      isContractModel: !!model.contractModelId,
+      price: model.price,
+      seller: model.seller,
+      sellerAddress: model.sellerAddress,
+      active: model.active,
+      sold: model.sold
+    });
+    
+    console.log('User:', {
+      address: address,
+      tokenBalance: tokenBalance,
+      isApproved: isApproved
+    });
+    
+    console.log('Contract state:', {
+      totalModels: totalModels,
+      contractBalance: contractBalance,
+      platformFeePercentage: platformFeePercentage,
+      contractModelsCount: contractModels?.length || 0
+    });
+    
+    console.log('Blockchain vs Database comparison:');
+    console.log('Blockchain models require:');
+    console.log('- Model to exist in smart contract');
+    console.log('- Model to be active');
+    console.log('- User to have sufficient token balance');
+    console.log('- User to have sufficient token allowance');
+    console.log('- User to not have already purchased the model');
+    console.log('- User to not be the model seller');
+    console.log('- Payment token to be set in contract');
+    
+    console.log('Database models require:');
+    console.log('- Model to exist in database');
+    console.log('- Valid seller address');
+    console.log('- User to have sufficient token balance');
+    console.log('- User to have sufficient token allowance');
+    console.log('- User to not have already purchased the model');
+    console.log('- User to not be the model seller');
+    
+    // Check if this model exists in contract
+    if (model.contractModelId && contractModels) {
+      const contractModel = contractModels.find(m => m.id === model.contractModelId);
+      console.log('Contract model found:', contractModel);
+    }
+  };
 
   // Calculate price in tokens (convert ETH price to tokens)
   const priceInTokens = parseFloat(model.price) * 1000;
@@ -59,9 +120,9 @@ export default function ModelCard({ model, isContractModel = false, displayMode 
       name: model.name,
       type: model.category || model.modelType || model.type || 'AI Model',
       price: model.price.includes('ETH') ? model.price.replace(' ETH', '') : model.price,
-      image: model.image,
+      image: model.image || '',
       seller: model.seller || model.sellerAddress || '',
-      contractModelId: model.contractModelId || model.id,
+      contractModelId: model.contractModelId,
       isContractModel,
     };
 
@@ -94,89 +155,121 @@ export default function ModelCard({ model, isContractModel = false, displayMode 
       return;
     }
 
-    // Check if user is trying to buy their own model
-    const sellerAddress = model.seller || model.sellerAddress || '';
-    if (address && address.toLowerCase() === sellerAddress.toLowerCase()) {
-      toast.error('You cannot buy your own model');
-      return;
-    }
-
-    // Check if user has sufficient token balance
-    if (parseFloat(tokenBalance) < priceInTokens) {
-      toast.error(`Insufficient token balance. You need ${priceInTokens.toFixed(2)} ANX tokens.`);
-      return;
-    }
-
-    // Check if tokens are approved for spending
-    if (!isApproved) {
-      toast.error('Please approve token spending first');
-      return;
-    }
-
-    // Validate required fields
-    if (!model._id) {
-      toast.error('Model ID is missing');
-      return;
-    }
-
-    if (!model.sellerAddress) {
-      toast.error('Seller address is missing for this model');
+    if (!tokenBalance || parseFloat(tokenBalance) < parseFloat(model.price.replace(' ETH', '')) * 1000) {
+      toast.error('Insufficient token balance');
       return;
     }
 
     setIsLoading(true);
 
     try {
+      console.log('=== MODEL CARD PURCHASE DEBUG ===');
+      console.log('Model details:', model);
+      console.log('Is contract model:', !!model.contractModelId);
+      console.log('Contract model ID:', model.contractModelId);
+      console.log('Model ID:', model._id);
+      console.log('User address:', address);
+      console.log('Token balance:', tokenBalance);
+      console.log('Model price:', model.price);
+      console.log('Price in tokens:', parseFloat(model.price.replace(' ETH', '')) * 1000);
+
       if (model.contractModelId) {
+        console.log('Attempting blockchain model purchase...');
+        // For contract models, use the blockchain purchase function
         await purchaseModelWithToken(model.contractModelId);
         
+        console.log('Blockchain purchase completed');
+        
+        // Log the purchase to backend after successful blockchain transaction
+        console.log('Logging blockchain purchase to backend...');
         await purchaseAPI.logTokenPurchase({
           modelId: model._id,
           contractModelId: Number(model.contractModelId) || 0,
           walletAddress: address,
-          sellerAddress: model.sellerAddress,
+          sellerAddress: model.sellerAddress || model.seller || '',
           txHash: `0x${Date.now().toString(16)}${Math.random().toString(16).substring(2, 10)}`,
           priceInETH: model.price.replace(' ETH', ''),
-          priceInTokens: priceInTokens.toString(),
+          priceInTokens: (parseFloat(model.price.replace(' ETH', '')) * 1000).toString(),
           priceInUSD: parseFloat(model.price.replace(' ETH', '')) * 2000,
           network: 'localhost',
           transactionType: 'contract_model_purchase',
           tokenContractAddress: import.meta.env.VITE_TOKEN_CONTRACT_ADDRESS,
           tokenSymbol: 'ANX',
           tokenDecimals: 18,
-          status: 'confirmed'
+          status: 'confirmed',
+          isContractModel: true
         });
+        console.log('Blockchain purchase logged to backend successfully');
       } else {
+        console.log('Attempting database model purchase...');
         // Purchase database model with tokens
         await purchaseDatabaseModelWithToken(
           model._id,
-          model.sellerAddress,
-          priceInTokens.toString(),
+          model.sellerAddress || model.seller || '',
+          (parseFloat(model.price.replace(' ETH', '')) * 1000).toString(),
           model.contractModelId || 0
         );
         
+        console.log('Database purchase completed');
+        
+        // Log the purchase to backend after successful blockchain transaction
+        console.log('Logging database purchase to backend...');
         await purchaseAPI.logTokenPurchase({
           modelId: model._id,
           contractModelId: Number(model.contractModelId) || 0,
           walletAddress: address,
-          sellerAddress: model.sellerAddress,
+          sellerAddress: model.sellerAddress || model.seller || '',
           txHash: `0x${Date.now().toString(16)}${Math.random().toString(16).substring(2, 10)}`,
           priceInETH: model.price.replace(' ETH', ''),
-          priceInTokens: priceInTokens.toString(),
+          priceInTokens: (parseFloat(model.price.replace(' ETH', '')) * 1000).toString(),
           priceInUSD: parseFloat(model.price.replace(' ETH', '')) * 2000,
           network: 'localhost',
           transactionType: 'database_model_purchase',
           tokenContractAddress: import.meta.env.VITE_TOKEN_CONTRACT_ADDRESS,
           tokenSymbol: 'ANX',
           tokenDecimals: 18,
-          status: 'confirmed'
+          status: 'confirmed',
+          isContractModel: false
         });
+        console.log('Database purchase logged to backend successfully');
       }
 
       toast.success(`Successfully purchased ${model.name} with tokens!`);
     } catch (error: any) {
+      console.error('=== MODEL CARD PURCHASE ERROR ===');
       console.error('Purchase error:', error);
-      toast.error(error.message || 'Failed to purchase model');
+      console.error('Error message:', error.message);
+      console.error('Error code:', error.code);
+      console.error('Error data:', error.data);
+      console.error('Error reason:', error.reason);
+      
+      // Check if this is a blockchain model purchase error
+      if (model.contractModelId) {
+        console.error('This was a blockchain model purchase that failed');
+        console.error('Model contract ID:', model.contractModelId);
+        console.error('Model database ID:', model._id);
+        
+        // Log the difference between blockchain and database models
+        console.log('=== BLOCKCHAIN VS DATABASE MODEL COMPARISON ===');
+        console.log('Blockchain models require:');
+        console.log('- Model to exist in smart contract');
+        console.log('- Model to be active');
+        console.log('- User to have sufficient token balance');
+        console.log('- User to have sufficient token allowance');
+        console.log('- User to not have already purchased the model');
+        console.log('- User to not be the model seller');
+        console.log('- Payment token to be set in contract');
+        
+        console.log('Database models require:');
+        console.log('- Model to exist in database');
+        console.log('- Valid seller address');
+        console.log('- User to have sufficient token balance');
+        console.log('- User to have sufficient token allowance');
+        console.log('- User to not have already purchased the model');
+        console.log('- User to not be the model seller');
+      }
+      
+      toast.error(error.message || 'Failed to purchase item');
     } finally {
       setIsLoading(false);
     }

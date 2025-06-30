@@ -1,171 +1,142 @@
-import { motion } from 'framer-motion';
-import { TrendingUp, Users, Zap, DollarSign, ShoppingCart, Star, Clock, Globe, Activity, BarChart3 } from 'lucide-react';
-import { useMarketStats } from '../hooks/useMarketData';
+import React, { useEffect } from 'react';
+import { motion, useAnimation } from 'framer-motion';
+import { TrendingUp, Users, ShoppingCart, DollarSign, Activity, Zap, Coins, BarChart3, Percent, Wallet, ArrowUpRight, ArrowDownRight, Database, Smartphone } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { purchaseAPI } from '../services/api';
+import { marketAPI } from '../services/api';
+import { useContract } from '../hooks/useContract';
+import { formatEther } from 'viem';
 
 export default function Stats() {
-  const { data: stats, isLoading, error } = useMarketStats();
-  
-  // Fetch all purchases to calculate total ETH spent on tokens
-  const { data: allPurchases } = useQuery({
-    queryKey: ['allPurchases'],
-    queryFn: async () => {
-      const response = await purchaseAPI.getAllPurchases();
-      return response.data?.docs || [];
-    },
-    refetchInterval: 30000, // Refetch every 30 seconds
+  const controls = useAnimation();
+  const { 
+    totalModels: contractTotalModels,
+    contractBalance,
+    platformFeePercentage,
+    models: contractModels
+  } = useContract();
+
+  // Fetch market data for additional stats (fallback)
+  const { data: marketData, isLoading: marketLoading } = useQuery({
+    queryKey: ['marketStats'],
+    queryFn: () => marketAPI.getStats(),
+    refetchInterval: 30000,
   });
 
-  // Calculate total ETH spent on tokens from all purchases
-  const totalETHSpentOnTokens = allPurchases ? allPurchases.reduce((total: number, purchase: any) => {
-    // Check if this is a token purchase
-    const isTokenPurchase = purchase.transactionType === 'token_purchase' || 
-                           purchase.transactionType === 'contract_model_purchase' ||
-                           purchase.transactionType === 'database_model_purchase' ||
-                           (purchase.priceInTokens && parseFloat(purchase.priceInTokens) > 0);
-    
-    if (isTokenPurchase) {
-      let ethAmount = parseFloat(purchase.priceInETH || '0');
-      
-      // If priceInETH is 0 but we have priceInTokens, calculate ETH equivalent
-      if (ethAmount === 0 && purchase.priceInTokens) {
-        const tokenAmount = parseFloat(purchase.priceInTokens);
-        ethAmount = tokenAmount / 1000; // Convert tokens to ETH
-      }
-      
-      // Ensure we have a valid ETH amount
-      if (ethAmount > 0) {
-        return total + ethAmount;
-      }
+  useEffect(() => {
+    const animateStats = async () => {
+      await controls.start({
+        opacity: 1,
+        y: 0,
+        transition: { duration: 0.6, ease: "easeOut" }
+      });
+    };
+
+    if (!marketLoading) {
+      animateStats();
     }
-    return total;
-  }, 0) : 0;
+  }, [controls, marketLoading]);
 
-  // Calculate total revenue from all transactions
-  const totalRevenue = allPurchases ? allPurchases.reduce((total: number, purchase: any) => {
-    return total + parseFloat(purchase.priceInETH || '0');
-  }, 0) : 0;
+  // Calculate contract-based statistics
+  const activeContractModels = contractModels?.filter((model: any) => model.active)?.length || 0;
+  const totalContractSales = contractModels?.reduce((sum: number, model: any) => sum + (model.totalSales || 0), 0) || 0;
 
-  // Calculate total ANX token volume
-  const totalANXVolume = allPurchases ? allPurchases.reduce((total: number, purchase: any) => {
-    return total + parseFloat(purchase.priceInTokens || '0');
-  }, 0) : 0;
-  
-  // Calculate additional metrics
-  const averagePrice = stats?.totalRevenue && stats?.totalModels ? 
-    parseFloat(stats.totalRevenue) / stats.totalModels : 0;
-  
-  const transactionVolume = stats?.totalRevenue ? parseFloat(stats.totalRevenue) : 0;
-  const userEngagement = stats?.uniqueBuyers && stats?.uniqueSellers ? 
-    (stats.uniqueBuyers + stats.uniqueSellers) / 2 : 0;
+  // Use API data for additional stats not available in contracts
+  const totalDatabaseModels = marketData?.totalModels || 0;
+  const uniqueBuyers = marketData?.uniqueBuyers || 0;
+  const uniqueSellers = marketData?.uniqueSellers || 0;
+  const totalModels = contractTotalModels + totalDatabaseModels;
 
-  const statItems = [
+  type ChangeType = 'positive' | 'negative' | 'neutral';
+
+  const stats = [
     {
-      icon: TrendingUp,
-      value: stats?.totalModels || 0,
-      label: 'AI Models Listed',
-      subLabel: 'Total available models',
-      change: '+12%',
+      title: 'Total Models',
+      value: totalModels.toLocaleString(),
+      subValue: `${activeContractModels} active on-chain`,
+      change: '+5.2%',
+      changeType: 'positive' as ChangeType,
       color: 'text-blue-600',
-      bgColor: 'bg-blue-50',
-      borderColor: 'border-blue-200'
+      bgColor: 'bg-gradient-to-br from-blue-50 to-cyan-50',
+      borderColor: 'border-blue-200',
+      icon: Database,
+      source: 'Contract + API'
     },
     {
-      icon: Users,
-      value: (stats?.uniqueBuyers || 0) + (stats?.uniqueSellers || 0),
-      label: 'Active Users',
-      subLabel: 'Buyers & sellers',
-      change: '+8%',
+      title: 'Contract Balance',
+      value: `${parseFloat(contractBalance).toFixed(4)} ETH`,
+      subValue: 'Platform fees collected',
+      change: platformFeePercentage + '%',
+      changeType: 'neutral' as ChangeType,
       color: 'text-green-600',
-      bgColor: 'bg-green-50',
-      borderColor: 'border-green-200'
+      bgColor: 'bg-gradient-to-br from-green-50 to-emerald-50',
+      borderColor: 'border-green-200',
+      icon: Wallet,
+      source: 'Contract'
     },
     {
-      icon: Zap,
-      value: `${totalETHSpentOnTokens.toFixed(4)}`,
-      label: 'Total ETH Spent on Tokens',
-      subLabel: 'All user ANX token purchases',
-      change: '+24%',
+      title: 'Platform Fee',
+      value: `${platformFeePercentage}%`,
+      subValue: 'Per transaction',
+      change: 'Fixed',
+      changeType: 'neutral' as ChangeType,
       color: 'text-purple-600',
-      bgColor: 'bg-purple-50',
-      borderColor: 'border-purple-200'
+      bgColor: 'bg-gradient-to-br from-purple-50 to-violet-50',
+      borderColor: 'border-purple-200',
+      icon: Percent,
+      source: 'Contract'
     },
     {
-      icon: DollarSign,
-      value: `${totalANXVolume.toFixed(0)}`,
-      label: 'Total ANX Token Volume',
-      subLabel: 'Combined token transactions',
-      change: '+18%',
-      color: 'text-yellow-600',
-      bgColor: 'bg-yellow-50',
-      borderColor: 'border-yellow-200'
-    },
-    {
-      icon: ShoppingCart,
-      value: stats?.totalPurchases || 0,
-      label: 'Total Transactions',
-      subLabel: 'Completed purchases',
-      change: '+15%',
+      title: 'Contract Sales',
+      value: totalContractSales.toLocaleString(),
+      subValue: 'On-chain transactions',
+      change: '+12.3%',
+      changeType: 'positive' as ChangeType,
       color: 'text-indigo-600',
-      bgColor: 'bg-indigo-50',
-      borderColor: 'border-indigo-200'
+      bgColor: 'bg-gradient-to-br from-indigo-50 to-blue-50',
+      borderColor: 'border-indigo-200',
+      icon: ShoppingCart,
+      source: 'Contract'
     },
     {
-      icon: Star,
-      value: totalRevenue.toFixed(4),
-      label: 'Total Platform Revenue',
-      subLabel: 'ETH from all transactions',
-      change: '+5%',
-      color: 'text-pink-600',
-      bgColor: 'bg-pink-50',
-      borderColor: 'border-pink-200'
+      title: 'Unique Buyers',
+      value: uniqueBuyers.toLocaleString(),
+      subValue: 'Active users',
+      change: '+8.7%',
+      changeType: 'positive' as ChangeType,
+      color: 'text-emerald-600',
+      bgColor: 'bg-gradient-to-br from-emerald-50 to-teal-50',
+      borderColor: 'border-emerald-200',
+      icon: Users,
+      source: 'API'
     },
     {
-      icon: Activity,
-      value: `${transactionVolume.toFixed(2)}`,
-      label: 'Transaction Volume',
-      subLabel: 'Total ETH traded',
-      change: '+22%',
+      title: 'Unique Sellers',
+      value: uniqueSellers.toLocaleString(),
+      subValue: 'Model creators',
+      change: '+15.1%',
+      changeType: 'positive' as ChangeType,
       color: 'text-orange-600',
-      bgColor: 'bg-orange-50',
-      borderColor: 'border-orange-200'
-    },
-    {
-      icon: Globe,
-      value: userEngagement.toFixed(0),
-      label: 'User Engagement',
-      subLabel: 'Active participants',
-      change: '+10%',
-      color: 'text-teal-600',
-      bgColor: 'bg-teal-50',
-      borderColor: 'border-teal-200'
+      bgColor: 'bg-gradient-to-br from-orange-50 to-amber-50',
+      borderColor: 'border-orange-200',
+      icon: Smartphone,
+      source: 'API'
     }
   ];
 
-  if (error) {
+  if (marketLoading) {
     return (
-      <section className="py-20 relative">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center text-red-600">
-            <p>Failed to load statistics. Please try again later.</p>
+      <section id="stats-section" className="py-16 bg-gradient-to-br from-blue-50 via-purple-50 to-indigo-100 relative overflow-hidden">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Market Statistics</h2>
+            <p className="text-lg text-gray-600">Loading real-time data from smart contracts...</p>
           </div>
-        </div>
-      </section>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <section className="py-20 relative">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {[...Array(8)].map((_, index) => (
-              <div key={index} className="card p-6 text-center animate-pulse">
-                <div className="w-8 h-8 bg-gray-800 rounded mx-auto mb-4"></div>
-                <div className="h-8 bg-gray-800 rounded mb-2"></div>
-                <div className="h-4 bg-gray-800 rounded mb-2"></div>
-                <div className="h-4 bg-gray-800 rounded w-16 mx-auto"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="bg-white/70 backdrop-blur-sm rounded-xl p-6 animate-pulse">
+                <div className="h-4 bg-gray-300 rounded w-3/4 mb-2"></div>
+                <div className="h-8 bg-gray-300 rounded w-1/2 mb-2"></div>
+                <div className="h-3 bg-gray-300 rounded w-2/3"></div>
               </div>
             ))}
           </div>
@@ -175,199 +146,78 @@ export default function Stats() {
   }
 
   return (
-    <section className="py-20 relative">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="stats-section" className="py-16 bg-gradient-to-br from-blue-50 via-purple-50 to-indigo-100 relative overflow-hidden">
+      {/* Background decoration */}
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 via-purple-50/50 to-indigo-100/50"></div>
+      <div className="absolute top-0 left-0 w-72 h-72 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
+      <div className="absolute top-0 right-0 w-72 h-72 bg-yellow-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
+      <div className="absolute -bottom-8 left-20 w-72 h-72 bg-pink-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
+      
+      <div className="container mx-auto px-4 relative z-10">
         <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          viewport={{ once: true }}
-          className="text-center mb-16"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="text-center mb-12"
         >
-          <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            <span className="text-gray-900">Platform </span>
-            <span className="gradient-text">Statistics</span>
-          </h2>
-          <p className="text-xl text-black max-w-4xl mx-auto">
-            Comprehensive real-time statistics and insights from the AI Nexus Marketplace. 
-            Track market performance, user engagement, and transaction volumes across the decentralized AI ecosystem.
-          </p>
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Market Statistics</h2>
+          <p className="text-lg text-gray-600">Real-time data from smart contracts and blockchain</p>
+          <div className="mt-2 text-sm text-gray-500">
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 mr-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
+              Contract Data
+            </span>
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              <div className="w-2 h-2 bg-blue-500 rounded-full mr-1"></div>
+              API Data
+            </span>
+          </div>
         </motion.div>
 
-        {/* Main Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-16">
-          {statItems.slice(0, 4).map((stat, index) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 50 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: index * 0.1 }}
-              viewport={{ once: true }}
-              className={`card p-6 text-center border-2 ${stat.borderColor} ${stat.bgColor} hover:shadow-xl transition-all duration-300`}
-            >
-              <div className="flex justify-center mb-4">
-                <stat.icon className={`h-10 w-10 ${stat.color}`} />
-              </div>
-              <div className="text-3xl font-bold text-gray-900 mb-2">
-                {typeof stat.value === 'number' ? stat.value.toLocaleString() : stat.value}
-              </div>
-              <div className="text-black font-semibold mb-1">{stat.label}</div>
-              <div className="text-gray-600 text-sm mb-2">{stat.subLabel}</div>
-              <div className="text-green-500 text-sm font-medium">{stat.change}</div>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Secondary Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-16">
-          {statItems.slice(4, 8).map((stat, index) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 50 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: (index + 4) * 0.1 }}
-              viewport={{ once: true }}
-              className={`card p-6 text-center border-2 ${stat.borderColor} ${stat.bgColor} hover:shadow-xl transition-all duration-300`}
-            >
-              <div className="flex justify-center mb-4">
-                <stat.icon className={`h-10 w-10 ${stat.color}`} />
-              </div>
-              <div className="text-3xl font-bold text-gray-900 mb-2">
-                {typeof stat.value === 'number' ? stat.value.toLocaleString() : stat.value}
-              </div>
-              <div className="text-black font-semibold mb-1">{stat.label}</div>
-              <div className="text-gray-600 text-sm mb-2">{stat.subLabel}</div>
-              <div className="text-green-500 text-sm font-medium">{stat.change}</div>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Additional Detailed Stats */}
-        {stats && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.4 }}
-            viewport={{ once: true }}
-            className="grid grid-cols-1 lg:grid-cols-3 gap-8"
-          >
-            {/* Market Activity */}
-            <div className="card p-6 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200">
-              <div className="flex items-center mb-4">
-                <Activity className="h-6 w-6 text-blue-600 mr-3" />
-                <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
-              </div>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Purchases (7 days)</span>
-                  <span className="font-semibold text-blue-600">
-                    {stats.recentActivity?.purchases || 0}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">New Models</span>
-                  <span className="font-semibold text-green-600">
-                    {stats.recentActivity?.newModels || 0}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Active Users</span>
-                  <span className="font-semibold text-purple-600">
-                    {stats.uniqueBuyers || 0}
-                  </span>
-                </div>
-              </div>
-            </div>
-            
-            {/* Top Categories */}
-            <div className="card p-6 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200">
-              <div className="flex items-center mb-4">
-                <BarChart3 className="h-6 w-6 text-green-600 mr-3" />
-                <h3 className="text-lg font-semibold text-gray-900">Top Categories</h3>
-              </div>
-              <div className="space-y-3">
-                {stats.topCategories?.slice(0, 3).map((category: any, index: number) => (
-                  <div key={category._id} className="flex justify-between items-center">
-                    <span className="text-gray-600">{category._id}</span>
-                    <span className="font-semibold text-green-600">{category.count} models</span>
-                  </div>
-                ))}
-                {(!stats.topCategories || stats.topCategories.length === 0) && (
-                  <div className="text-gray-500 text-sm">No category data available</div>
-                )}
-              </div>
-            </div>
-            
-            {/* Market Performance */}
-            <div className="card p-6 bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200">
-              <div className="flex items-center mb-4">
-                <TrendingUp className="h-6 w-6 text-purple-600 mr-3" />
-                <h3 className="text-lg font-semibold text-gray-900">Market Performance</h3>
-              </div>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Total Revenue</span>
-                  <span className="font-semibold text-purple-600">
-                    {totalRevenue.toFixed(4)} ETH
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">ANX Token Volume</span>
-                  <span className="font-semibold text-green-600">
-                    {totalANXVolume.toFixed(0)} ANX
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">ETH Spent on Tokens</span>
-                  <span className="font-semibold text-blue-600">
-                    {totalETHSpentOnTokens.toFixed(4)} ETH
-                  </span>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Market Insights */}
         <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.6 }}
-          viewport={{ once: true }}
-          className="mt-16"
+          initial={{ opacity: 0, y: 40 }}
+          animate={controls}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
         >
-          <div className="card p-8 bg-gradient-to-r from-gray-50 to-blue-50 border border-gray-200">
-            <div className="text-center mb-6">
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">Market Insights</h3>
-              <p className="text-gray-600">Key metrics and trends from the AI Nexus ecosystem</p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600 mb-1">
-                  {stats?.totalModels || 0}
+          {stats.map((stat, index) => (
+            <motion.div
+              key={stat.title}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: index * 0.1 }}
+              className={`bg-white/70 backdrop-blur-sm rounded-xl p-6 border ${stat.borderColor} hover:shadow-lg transition-all duration-300`}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className={`p-3 rounded-lg ${stat.bgColor}`}>
+                  <stat.icon className={`h-6 w-6 ${stat.color}`} />
                 </div>
-                <div className="text-gray-600 text-sm">Total Models Available</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600 mb-1">
-                  {stats?.uniqueBuyers || 0}
+                <div className="flex items-center space-x-1">
+                  <span className="text-xs font-medium text-gray-500">{stat.source}</span>
+                  {stat.changeType === 'positive' && (
+                    <ArrowUpRight className="h-4 w-4 text-green-500" />
+                  )}
+                  {stat.changeType === 'negative' && (
+                    <ArrowDownRight className="h-4 w-4 text-red-500" />
+                  )}
                 </div>
-                <div className="text-gray-600 text-sm">Unique Buyers</div>
               </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600 mb-1">
-                  {stats?.uniqueSellers || 0}
-                </div>
-                <div className="text-gray-600 text-sm">Active Sellers</div>
+              
+              <div className="mb-2">
+                <h3 className="text-2xl font-bold text-gray-900">{stat.value}</h3>
+                <p className="text-sm text-gray-600">{stat.subValue}</p>
               </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-orange-600 mb-1">
-                  {stats?.totalPurchases || 0}
-                </div>
-                <div className="text-gray-600 text-sm">Total Transactions</div>
+              
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-500">{stat.title}</span>
+                <span className={`text-sm font-medium ${
+                  stat.changeType === 'positive' ? 'text-green-600' :
+                  stat.changeType === 'negative' ? 'text-red-600' : 'text-gray-600'
+                }`}>
+                  {stat.change}
+                </span>
               </div>
-            </div>
-          </div>
+            </motion.div>
+          ))}
         </motion.div>
       </div>
     </section>

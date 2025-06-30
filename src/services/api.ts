@@ -75,6 +75,7 @@ export interface User {
 export interface Purchase {
   _id: string;
   modelId: string;
+  isContractModel?: boolean;
   contractModelId: number;
   walletAddress: string;
   sellerAddress: string;
