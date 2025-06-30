@@ -26,7 +26,7 @@ export default function Cookies() {
     if (!address) return;
 
     try {
-      const response = await cookieAPI.getCookiePreferences(address);
+      const response = await cookieAPI.getPreferences(address);
       if (response.success && response.data) {
         setCookieSettings({
           necessary: response.data.necessary,
@@ -49,7 +49,7 @@ export default function Cookies() {
     setIsLoading(true);
 
     try {
-      await cookieAPI.updateCookiePreferences(address, newSettings);
+      await cookieAPI.updatePreferences(address, newSettings);
       setCookieSettings(newSettings);
       toast.success('Cookie preferences saved successfully!');
     } catch (error) {

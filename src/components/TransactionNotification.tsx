@@ -5,7 +5,7 @@ import { useBlockchainData } from '../hooks/useBlockchainData';
 import { formatEther } from 'viem';
 import { useAccount } from 'wagmi';
 
-interface TransactionNotificationProps {
+export interface TransactionNotificationProps {
   showNotifications?: boolean;
   maxNotifications?: number;
 }

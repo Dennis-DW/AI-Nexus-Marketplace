@@ -13,7 +13,7 @@ export default function Blog() {
   // Fetch blog categories
   const { data: categoriesData } = useQuery({
     queryKey: ['blogCategories'],
-    queryFn: blogAPI.getCategories,
+    queryFn: () => blogAPI.getCategories(),
   });
 
   // Fetch blogs
@@ -30,7 +30,7 @@ export default function Blog() {
   // Fetch featured blogs
   const { data: featuredData } = useQuery({
     queryKey: ['featuredBlogs'],
-    queryFn: blogAPI.getFeaturedPosts,
+    queryFn: () => blogAPI.getFeaturedPosts(5),
   });
 
   const categories = ['All', ...(categoriesData?.data?.map((cat: any) => cat._id) || [])];

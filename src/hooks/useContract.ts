@@ -322,7 +322,7 @@ export function useContract() {
   ) => {
     try {
       // Ensure purchaseIndex is a valid number
-      const validPurchaseIndex = typeof purchaseIndex === 'number' ? purchaseIndex : 0;
+      const validPurchaseIndex = typeof purchaseIndex === 'number' && !isNaN(purchaseIndex) ? purchaseIndex : 0;
       
       console.log('=== UPDATE TRANSACTION HASH DEBUG ===');
       console.log('Model ID:', modelId);
@@ -418,7 +418,7 @@ export function useContract() {
     
     // Contract statistics
     totalModels: totalModels ? Number(totalModels) : 0,
-    contractBalance: contractBalance ? formatEther(contractBalance) : '0',
+    contractBalance: contractBalance && typeof contractBalance === 'bigint' ? formatEther(contractBalance) : '0',
     platformFeePercentage: platformFeePercentage ? Number(platformFeePercentage) / 100 : 2.5, // Convert from basis points to percentage
     
     // Write functions

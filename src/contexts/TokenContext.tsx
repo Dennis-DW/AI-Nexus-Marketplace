@@ -34,7 +34,7 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
     address: ANX_TOKEN_ADDRESS as `0x${string}`,
     abi: ANX_TOKEN_ABI,
     functionName: 'balanceOf',
-    args: address ? [address] : undefined,
+    args: address ? [address] : ['0x0000000000000000000000000000000000000000'],
     query: {
       enabled: !!address && isConnected,
     },
@@ -45,7 +45,7 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
     address: ANX_TOKEN_ADDRESS as `0x${string}`,
     abi: ANX_TOKEN_ABI,
     functionName: 'allowance',
-    args: address && MARKETPLACE_ADDRESS ? [address, MARKETPLACE_ADDRESS as `0x${string}`] : undefined,
+    args: address && MARKETPLACE_ADDRESS ? [address, MARKETPLACE_ADDRESS as `0x${string}`] : ['0x0000000000000000000000000000000000000000', '0x0000000000000000000000000000000000000000'],
     query: {
       enabled: !!address && isConnected && !!MARKETPLACE_ADDRESS,
     },
@@ -263,14 +263,19 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
 
   // Update balance and approval when data changes
   useEffect(() => {
-    if (balanceData) {
+    if (balanceData && typeof balanceData === 'bigint') {
       setTokenBalance(formatUnits(balanceData, 18));
+    } else {
+      setTokenBalance('0');
     }
   }, [balanceData]);
 
   useEffect(() => {
-    if (allowanceData && MARKETPLACE_ADDRESS) {
-      setIsApproved(BigInt(allowanceData) >= parseUnits('1000000', 18));
+    if (allowanceData && MARKETPLACE_ADDRESS && typeof allowanceData === 'bigint') {
+      const requiredAmount = parseUnits('1000000', 18);
+      setIsApproved(allowanceData >= requiredAmount);
+    } else {
+      setIsApproved(false);
     }
   }, [allowanceData]);
 
