@@ -119,7 +119,7 @@ export default function Privacy() {
     }
   ];
 
-  const lastUpdated = 'January 15, 2024';
+  const lastUpdated = 'January 15, 2025';
 
   return (
     <div className="pt-20 min-h-screen bg-gray-50">

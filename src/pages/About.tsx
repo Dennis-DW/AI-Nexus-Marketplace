@@ -55,8 +55,8 @@ export default function About() {
   const milestones = [
     { year: '2023', title: 'Company Founded', description: 'AI Nexus was established with a vision to democratize AI.' },
     { year: '2023', title: 'MVP Launch', description: 'Released the first version of our decentralized marketplace.' },
-    { year: '2024', title: 'Smart Contracts', description: 'Deployed secure smart contracts for transparent transactions.' },
-    { year: '2024', title: 'Community Growth', description: 'Reached 10,000+ developers and 1,000+ AI models.' },
+    { year: '2025', title: 'Smart Contracts', description: 'Deployed secure smart contracts for transparent transactions.' },
+    { year: '2025', title: 'Community Growth', description: 'Reached 10,000+ developers and 1,000+ AI models.' },
   ];
 
   return (

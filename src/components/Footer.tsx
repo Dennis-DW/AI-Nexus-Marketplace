@@ -74,7 +74,7 @@ export default function Footer() {
 
         <div className="border-t border-gray-200 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center">
           <p className="text-black text-sm">
-            © 2024 AI Nexus. All rights reserved.
+            © 2025 AI Nexus. All rights reserved.
           </p>
           <p className="text-black text-sm mt-4 md:mt-0">
             Built with ❤️ for the decentralized AI community

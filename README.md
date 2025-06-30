@@ -13,6 +13,48 @@ A complete decentralized AI model marketplace built with React, TypeScript, Node
 - **⚡ High Performance**: Optimized for speed and scalability
 - **🌐 Multi-network Support**: Ethereum, Holesky, and local networks
 
+## 🌐 Live Deployment
+
+**Frontend**: [https://ai-nexus-marketplace.onrender.com](https://ai-nexus-marketplace.onrender.com)  
+**Backend API**: [https://ai-nexus-marketplace.onrender.com](https://ai-nexus-marketplace.onrender.com)
+
+## 🏆 Hackathon Project
+
+This project was developed as part of the **Bolt AI Hackathon**, showcasing innovative blockchain and AI integration solutions. We're proud to have participated in this exciting event that brought together developers, designers, and innovators to build the future of decentralized AI marketplaces.
+
+## 🏗️ Architecture Overview
+
+### System Architecture
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Frontend      │    │   Backend       │    │   Blockchain    │
+│   (React/TS)    │◄──►│   (Node.js)     │◄──►│   (Ethereum)    │
+│                 │    │                 │    │                 │
+│ • Web3 Wallet   │    │ • REST API      │    │ • Smart         │
+│ • UI Components │    │ • MongoDB       │    │   Contracts     │
+│ • State Mgmt    │    │ • Analytics     │    │ • Token System  │
+│ • Real-time UI  │    │ • Validation    │    │ • Marketplace   │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+### Technology Stack
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Framer Motion
+- **Backend**: Node.js, Express.js, MongoDB, Mongoose
+- **Blockchain**: Solidity, Hardhat, Web3.js, RainbowKit
+- **Deployment**: Render (Frontend & Backend), Ethereum Holesky Testnet
+- **Infrastructure**: RESTful API, WebSocket connections, IPFS integration
+
+### Network Deployment
+The application is deployed on the **Ethereum Holesky Testnet** for development and testing purposes. This network provides:
+- **Network ID**: 17000
+- **RPC URL**: https://ethereum-holesky.publicnode.com
+- **Block Explorer**: https://holesky.etherscan.io
+- **Test ETH**: Available through various faucets
+
+**Smart Contract Addresses (Holesky Testnet)**:
+- Marketplace Contract: `0x...` (Deployed on Holesky)
+- ANX Token Contract: `0x...` (Deployed on Holesky)
+
 ## 🏗️ Project Structure
 
 ```
@@ -47,7 +89,7 @@ ai-nexus-marketplace/
 
 ### 1. Clone and Install
 ```bash
-git clone <repository-url>
+git clone https://github.com/Dennis-DW/AI-Nexus-Marketplace.git
 cd ai-nexus-marketplace
 npm install
 ```
@@ -386,15 +428,27 @@ For Holesky testnet:
 
 ## 🙏 Acknowledgments
 
-- **OpenZeppelin**: Smart contract security libraries
-- **RainbowKit**: Web3 wallet integration
-- **Framer Motion**: Animation library
-- **Tailwind CSS**: Utility-first CSS framework
-- **Hardhat**: Ethereum development environment
+### Bolt AI Hackathon
+We extend our heartfelt gratitude to **Bolt AI** for organizing this incredible hackathon that provided the platform and resources for building innovative AI-powered blockchain solutions. The hackathon experience was invaluable in pushing the boundaries of what's possible at the intersection of AI and blockchain technology.
+
+### Open Source Community
+- **OpenZeppelin**: Smart contract security libraries and best practices
+- **RainbowKit**: Seamless Web3 wallet integration and user experience
+- **Framer Motion**: Beautiful animations and micro-interactions
+- **Tailwind CSS**: Utility-first CSS framework for rapid UI development
+- **Hardhat**: Comprehensive Ethereum development environment
+- **Vite**: Lightning-fast build tool and development server
+- **React**: Declarative UI library for building user interfaces
+
+### Special Thanks
+- The Ethereum community for providing robust blockchain infrastructure
+- MongoDB for scalable database solutions
+- Render for reliable cloud hosting and deployment
+- All contributors and beta testers who provided valuable feedback
 
 ---
 
 Built with ❤️ by the AI Nexus Team
 
 **Version**: 1.0.0  
-**Last Updated**: January 2024
+**Last Updated**: January 2025

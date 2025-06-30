@@ -222,4 +222,3 @@ docker-compose.override.yml
 # Local development
 .local/ 
 
-mongodb+srv://denny012dw:LGy85KYJiQgQDzHy@cluster0.yd3vh6p.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0

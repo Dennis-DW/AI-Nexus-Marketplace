@@ -257,9 +257,9 @@ Response:
 
 Response:
 {
-  "volume": [{"date": "2024-01-01", "value": "5.2"}, ...],
-  "transactions": [{"date": "2024-01-01", "count": 12}, ...],
-  "revenue": [{"date": "2024-01-01", "amount": "1300"}, ...]
+  "volume": [{"date": "2025-01-01", "value": "5.2"}, ...],
+  "transactions": [{"date": "2025-01-01", "count": 12}, ...],
+  "revenue": [{"date": "2025-01-01", "amount": "1300"}, ...]
 }</code></pre>
             
             <h4>Get Market Trends</h4>
@@ -462,10 +462,10 @@ function getTokenRate() external view returns (uint256)</code></pre>
             
             <h4>Recent Audits</h4>
             <ul>
-              <li><strong>Consensys Diligence:</strong> Marketplace Contract Audit (Q4 2024)</li>
-              <li><strong>OpenZeppelin:</strong> Token Contract Audit (Q3 2024)</li>
-              <li><strong>Trail of Bits:</strong> Escrow Service Audit (Q2 2024)</li>
-              <li><strong>Quantstamp:</strong> Platform Fee System Audit (Q1 2024)</li>
+              <li><strong>Consensys Diligence:</strong> Marketplace Contract Audit (Q4 2025)</li>
+              <li><strong>OpenZeppelin:</strong> Token Contract Audit (Q3 2025)</li>
+              <li><strong>Trail of Bits:</strong> Escrow Service Audit (Q2 2025)</li>
+              <li><strong>Quantstamp:</strong> Platform Fee System Audit (Q1 2025)</li>
             </ul>
             
             <h4>Audit Results</h4>

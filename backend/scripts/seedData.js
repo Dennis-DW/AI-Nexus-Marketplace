@@ -9,7 +9,7 @@ const Newsletter = require('../models/Newsletter');
 
 const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ai-nexus-marketplace');
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://denny012dw:LGy85KYJiQgQDzHy@cluster0.yd3vh6p.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0');
     console.log('📦 MongoDB Connected for seeding');
   } catch (error) {
     console.error('❌ MongoDB connection failed:', error.message);
@@ -70,19 +70,6 @@ const sampleModels = [
     downloads: 892,
     rating: 4.6,
     totalRatings: 98
-  },
-  {
-    name: 'Music Generation AI Composer',
-    type: 'Audio',
-    description: 'AI model that generates original music compositions in various genres and styles with professional quality.',
-    price: '0.4',
-    fileHash: '567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234',
-    sellerAddress: '0x456d35cc6bf8c4c2b8b8b8b8b8b8b8b8b8b8b8b8',
-    tags: ['audio', 'music-generation', 'composer', 'ai-music'],
-    category: 'Audio',
-    downloads: 634,
-    rating: 4.7,
-    totalRatings: 73
   }
 ];
 
