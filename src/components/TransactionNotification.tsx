@@ -37,7 +37,7 @@ export default function TransactionNotification({
     if (!blockchainStats || !previousStats) {
       setPreviousStats(blockchainStats);
       return;
-    }
+}
 
     const newNotifications: Notification[] = [];
 
@@ -166,40 +166,40 @@ export default function TransactionNotification({
 
   return (
     <div className="fixed top-20 right-4 z-50 space-y-2">
-      <AnimatePresence>
+    <AnimatePresence>
         {isVisible && notifications.map((notification) => (
-          <motion.div
+        <motion.div
             key={notification.id}
-            initial={{ opacity: 0, x: 300, scale: 0.8 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 300, scale: 0.8 }}
+          initial={{ opacity: 0, x: 300, scale: 0.8 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          exit={{ opacity: 0, x: 300, scale: 0.8 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
             className={`max-w-sm w-full p-4 rounded-lg border shadow-lg ${getNotificationColor(notification.type)}`}
-          >
-            <div className="flex items-start space-x-3">
-              <div className="flex-shrink-0">
+        >
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0">
                 {getNotificationIcon(notification.type, notification.status)}
-              </div>
-              
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
+            </div>
+            
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
                   <h4 className="text-sm font-medium text-gray-900">
                     {notification.title}
-                  </h4>
-                  <button
+                </h4>
+                <button
                     onClick={() => removeNotification(notification.id)}
-                    className="flex-shrink-0 ml-2 text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                
+                  className="flex-shrink-0 ml-2 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              
                 <p className="text-sm text-gray-600 mt-1">
                   {notification.message}
-                </p>
-                
+              </p>
+              
                 {notification.amount && (
-                  <div className="mt-2">
+                <div className="mt-2">
                     <span className="text-sm font-medium text-gray-900">
                       {notification.amount}
                     </span>
@@ -223,11 +223,11 @@ export default function TransactionNotification({
                     </button>
                   )}
                 </div>
-              </div>
             </div>
-          </motion.div>
+          </div>
+        </motion.div>
         ))}
-      </AnimatePresence>
+    </AnimatePresence>
     </div>
   );
 } 

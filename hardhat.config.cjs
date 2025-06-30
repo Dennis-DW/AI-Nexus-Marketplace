@@ -1,6 +1,7 @@
 require("@nomicfoundation/hardhat-toolbox");
 require("dotenv").config();
 
+
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
@@ -24,6 +25,9 @@ module.exports = {
       url: process.env.HOLESKY_RPC_URL || "https://ethereum-holesky.publicnode.com",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 17000,
+      gasPrice: 50000000000,  // 50 gwei in wei
+      gasMultiplier: 2,
+      timeout: 100000
     },
     mainnet: {
       url: process.env.MAINNET_RPC_URL || "",

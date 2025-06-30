@@ -189,14 +189,14 @@ export default function Dashboard() {
           {/* Real-time status and controls */}
           <div className="mt-6 flex items-center justify-center space-x-4">
             <div className="flex items-center space-x-4 text-sm">
-              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
-                Contract Data
-              </span>
-              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                <div className="w-2 h-2 bg-blue-500 rounded-full mr-1"></div>
-                API Data
-              </span>
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+              <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
+              Contract Data
+            </span>
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              <div className="w-2 h-2 bg-blue-500 rounded-full mr-1"></div>
+              API Data
+            </span>
               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                 <div className="w-2 h-2 bg-purple-500 rounded-full mr-1"></div>
                 Real-time

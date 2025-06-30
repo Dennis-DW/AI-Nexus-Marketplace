@@ -175,7 +175,7 @@ export default function TokenBalance() {
               <div className="flex items-center justify-between mb-2">
                 <h4 className="font-semibold text-gray-900">Token Balance</h4>
                 <div className="flex items-center space-x-2">
-                  <Coins className="h-4 w-4 text-blue-600" />
+                <Coins className="h-4 w-4 text-blue-600" />
                   <button
                     onClick={handleManualRefresh}
                     disabled={blockchainLoading}

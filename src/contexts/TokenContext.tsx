@@ -74,7 +74,7 @@ export const TokenProvider = ({ children }: { children: ReactNode }) => {
       await refetchBalance();
       await refetchAllowance();
     } catch (e: any) {
-      console.error('Error refreshing balance:', e);
+        console.error('Error refreshing balance:', e);
       setTokenBalance('0');
       if (e.message !== 'Please connect your wallet first' && 
           !e.message.includes('could not decode result data') &&

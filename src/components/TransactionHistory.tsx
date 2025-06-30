@@ -269,13 +269,13 @@ export default function TransactionHistory({
             </button>
           )}
           
-          <button
-            onClick={exportTransactions}
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-          >
-            <Download className="h-4 w-4" />
-            <span>Export CSV</span>
-          </button>
+        <button
+          onClick={exportTransactions}
+          className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+        >
+          <Download className="h-4 w-4" />
+          <span>Export CSV</span>
+        </button>
         </div>
       </div>
 
@@ -300,7 +300,7 @@ export default function TransactionHistory({
           <div className="flex items-center space-x-2 mb-3">
             <Activity className="h-4 w-4 text-blue-600" />
             <h3 className="font-medium text-gray-900">Blockchain Transaction Summary</h3>
-          </div>
+      </div>
           
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="text-center">

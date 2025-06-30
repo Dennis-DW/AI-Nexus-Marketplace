@@ -303,6 +303,87 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Email**: support@ainexus.com
 - **Issues**: [GitHub Issues](https://github.com/ainexus/marketplace/issues)
 
+## 🚨 Deployment Troubleshooting
+
+### Common Issues and Solutions
+
+#### 1. "Cannot read properties of undefined (reading 'address')" Error
+
+**Problem**: This error occurs when the `PRIVATE_KEY` environment variable is not set.
+
+**Solution**:
+```bash
+# Option 1: Use the setup script
+npm run setup:env
+
+# Option 2: Create .env file manually
+echo "PRIVATE_KEY=your_private_key_here" > .env
+echo "HOLESKY_RPC_URL=https://ethereum-holesky.publicnode.com" >> .env
+```
+
+**Important**: Never commit your private key to version control!
+
+#### 2. "No deployer account found" Error
+
+**Problem**: The private key is invalid or the account has no funds.
+
+**Solution**:
+- Verify your private key is correct (64 characters, no 0x prefix)
+- Ensure your wallet has sufficient ETH for deployment
+- For testnets, get test ETH from a faucet
+
+#### 3. "Network timeout" Error
+
+**Problem**: RPC endpoint is slow or unreachable.
+
+**Solution**:
+```bash
+# Try alternative RPC endpoints
+HOLESKY_RPC_URL=https://rpc.ankr.com/eth_holesky
+# or
+HOLESKY_RPC_URL=https://ethereum-holesky.blockpi.network/v1/rpc/public
+```
+
+#### 4. "Gas estimation failed" Error
+
+**Problem**: Insufficient gas or network congestion.
+
+**Solution**:
+- Increase gas limit in hardhat.config.cjs
+- Wait for lower network congestion
+- Use a different network (localhost for testing)
+
+### Quick Deployment Guide
+
+```bash
+# 1. Set up environment
+npm run setup:env
+
+# 2. Compile contracts
+npm run compile
+
+# 3. Deploy to localhost (for testing)
+npm run deploy:localhost
+
+# 4. Deploy to Holesky testnet
+npm run deploy:holesky
+```
+
+### Environment Variables Reference
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `PRIVATE_KEY` | ✅ | Your wallet private key | `abc123...` |
+| `HOLESKY_RPC_URL` | ✅ | Holesky testnet RPC | `https://ethereum-holesky.publicnode.com` |
+| `ETHERSCAN_API_KEY` | ❌ | For contract verification | `ABC123...` |
+| `MAINNET_RPC_URL` | ❌ | Mainnet RPC (for mainnet deployment) | `https://eth-mainnet...` |
+
+### Getting Test ETH
+
+For Holesky testnet:
+- [Holesky Faucet](https://holesky-faucet.pk910.de/)
+- [Chainlink Faucet](https://faucets.chain.link/holesky)
+
 ## 🙏 Acknowledgments
 
 - **OpenZeppelin**: Smart contract security libraries

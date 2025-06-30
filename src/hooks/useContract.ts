@@ -334,7 +334,7 @@ export function useContract() {
         abi: ABI,
         functionName: 'updatePurchaseTxHash',
         args: [modelId, BigInt(validPurchaseIndex), txHash],
-      });
+    });
 
       console.log('Update transaction hash result:', result);
 

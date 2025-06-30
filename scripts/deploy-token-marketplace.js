@@ -6,8 +6,24 @@ import fs from 'fs/promises';
 async function main() {
   console.log("🚀 Starting deployment of AINexus Token and Marketplace...");
 
+  // Check if private key is set
+  if (!process.env.PRIVATE_KEY) {
+    console.error("❌ PRIVATE_KEY environment variable is not set!");
+    console.log("📝 Please set your private key in the .env file:");
+    console.log("   PRIVATE_KEY=your_private_key_here");
+    console.log("   HOLESKY_RPC_URL=https://ethereum-holesky.publicnode.com");
+    process.exit(1);
+  }
+
   // Get the deployer account
   const [deployer] = await ethers.getSigners();
+  
+  if (!deployer) {
+    console.error("❌ No deployer account found!");
+    console.log("📝 Please check your hardhat configuration and ensure PRIVATE_KEY is set correctly.");
+    process.exit(1);
+  }
+  
   console.log("📝 Deploying contracts with account:", deployer.address);
 
   // Get the account balance using the provider
@@ -18,19 +34,61 @@ async function main() {
   console.log("\n🔧 Deploying AINexus Token...");
   const AINexusToken = await ethers.getContractFactory("AINexusToken");
   const token = await AINexusToken.deploy();
+  await token.waitForDeployment(); // Wait for deployment to be confirmed
   console.log("✅ AINexus Token deployed to:", token.target);
 
   // Deploy Marketplace
   console.log("\n🔧 Deploying AINexus Marketplace...");
   const AINexusMarketplace = await ethers.getContractFactory("AINexusMarketplace");
   const marketplace = await AINexusMarketplace.deploy();
+  await marketplace.waitForDeployment(); // Wait for deployment to be confirmed
   console.log("✅ AINexus Marketplace deployed to:", marketplace.target);
+
+  // Verify ownership before setting payment token
+  console.log("\n🔍 Verifying contract ownership...");
+  const marketplaceOwner = await marketplace.owner();
+  console.log("Marketplace owner:", marketplaceOwner);
+  console.log("Deployer address:", deployer.address);
+  
+  if (marketplaceOwner !== deployer.address) {
+    console.error("❌ Deployer is not the marketplace owner!");
+    console.log("Expected owner:", deployer.address);
+    console.log("Actual owner:", marketplaceOwner);
+    process.exit(1);
+  }
+  console.log("✅ Ownership verified!");
 
   // Set the payment token in the marketplace
   console.log("\n🔧 Setting payment token in marketplace...");
-  const setTokenTx = await marketplace.setPaymentToken(token.target);
-  await setTokenTx.wait();
-  console.log("✅ Payment token set in marketplace");
+  
+  // Check if payment token is already set
+  const currentPaymentToken = await marketplace.paymentToken();
+  if (currentPaymentToken !== ethers.ZeroAddress) {
+    console.log("⚠️  Payment token already set to:", currentPaymentToken);
+    if (currentPaymentToken === token.target) {
+      console.log("✅ Payment token is already correctly set!");
+    } else {
+      console.log("❌ Payment token is set to a different address!");
+      console.log("   Expected:", token.target);
+      console.log("   Current:", currentPaymentToken);
+      process.exit(1);
+    }
+  } else {
+    try {
+      const setTokenTx = await marketplace.setPaymentToken(token.target);
+      console.log("⏳ Waiting for transaction confirmation...");
+      await setTokenTx.wait();
+      console.log("✅ Payment token set in marketplace");
+    } catch (error) {
+      console.error("❌ Failed to set payment token:", error.message);
+      console.log("📝 Transaction details:");
+      console.log("   Token address:", token.target);
+      console.log("   Marketplace address:", marketplace.target);
+      console.log("   Deployer address:", deployer.address);
+      console.log("   Marketplace owner:", await marketplace.owner());
+      throw error;
+    }
+  }
 
   // Verify the setup
   console.log("\n🔍 Verifying deployment...");
