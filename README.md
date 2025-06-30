@@ -15,7 +15,7 @@ A complete decentralized AI model marketplace built with React, TypeScript, Node
 
 ## 🌐 Live Deployment
 
-**Frontend**: [https://ai-nexus-marketplace.onrender.com](https://ai-nexus-marketplace.onrender.com)  
+**Frontend**: [https://ai-nexus-marketplace.vercel.app/](https://ai-nexus-marketplace.vercel.app/)  
 **Backend API**: [https://ai-nexus-marketplace.onrender.com](https://ai-nexus-marketplace.onrender.com)
 
 ## 🏆 Hackathon Project
