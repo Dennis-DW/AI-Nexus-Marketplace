@@ -25,6 +25,7 @@ app.use(cors({
     'http://localhost:3000', 
     'http://localhost:5173', 
     'https://localhost:5173',
+    'https://ai-nexus-marketplace.vercel.app',
     process.env.FRONTEND_URL
   ].filter(Boolean),
   credentials: true,
